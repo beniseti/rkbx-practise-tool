@@ -69,6 +69,33 @@ class PracticeSession:
     def contains(self, track_id: str) -> bool:
         return track_id in self._by_id
 
+    @staticmethod
+    def _path_key(t: Track) -> str | None:
+        return t.path.replace("\\", "/").strip().lower() or None if t.path else None
+
+    @staticmethod
+    def _name_key(t: Track) -> tuple[str, str] | None:
+        title = (t.title or "").strip().lower()
+        return (title, (t.artist or "").strip().lower()) if title else None
+
+    def equivalent(self, track: Track) -> Track | None:
+        """El tema de la sesión que corresponde a `track`.
+
+        Por ID; si no, por ruta del archivo; si no, por título + artista. En una biblioteca
+        real el mismo tema puede estar importado dos veces con IDs distintos (visto en real:
+        el deck tenía un ID y la playlist otro, y no se tachaba).
+        """
+        if track.id in self._by_id:
+            return self._by_id[track.id]
+        pk, nk = self._path_key(track), self._name_key(track)
+        for t in self.display_order:
+            if pk and self._path_key(t) == pk:
+                return t
+        for t in self.display_order:
+            if nk and self._name_key(t) == nk:
+                return t
+        return None
+
     def is_struck(self, track_id: str) -> bool:
         return track_id in self.struck
 
@@ -94,6 +121,7 @@ class PracticeSession:
         """Se ha cargado `track` en un deck. Devuelve True si era de la sesión."""
         with self._lock:
             at = at or datetime.now()
+            track = self.equivalent(track) or track
             in_session = track.id in self._by_id
             sug = self._suggestion
             followed_plan = (sug is not None and not sug.is_wildcard and sug.track.id == track.id)

@@ -107,7 +107,8 @@ rkbx-practise-tool/
     "reconnect_interval_s": 3,
     "position_jump_tolerance_s": 0.25,
     "max_consecutive_read_errors": 50,
-    "load_debounce_ms": 300
+    "load_debounce_ms": 300,
+    "empty_deck_without_bpm": true
   },
   "mixer": {
     "crossfader_enabled": false,
@@ -149,6 +150,7 @@ Claves añadidas durante la implementación:
 - `session.optimize_time_budget_s`: tiempo máximo de optimización del orden (el recálculo en directo usa como máximo 0,25 s).
 - `live.position_jump_tolerance_s`: margen para detectar saltos de posición (loops, hot cues, arrastre).
 - `live.max_consecutive_read_errors`: lecturas fallidas seguidas antes de reconectar.
+- `live.empty_deck_without_bpm`: un deck sin BPM se considera vacío (en 7.2.3 la ruta ANLZ conserva un valor antiguo con el deck vacío).
 - `live.load_debounce_ms`: una carga de tema solo cuenta si la ruta lleva ese tiempo estable (evita cargas fantasma mientras Rekordbox carga).
 - `mixer.crossfader_assign`: lado del crossfader de cada deck (`A`, `B` o `THRU`).
 - `detection.on_beat_tolerance_ms`: tolerancia para considerar un fader cut "a tiempo".
@@ -215,6 +217,8 @@ Implementación:
 - Orden: cadena voraz desde varios inicios + mejora local 2-opt (coste direccional) y Or-opt, con límite de tiempo.
 - Variedad (`session.variety`, por defecto 0,5; `--variety` en la CLI): el usuario pidió que cada sesión generada sea distinta. Se suma ruido aleatorio solo a las transiciones compatibles y el inicio se elige al azar entre las mejores cadenas. Con `--seed` se puede repetir una sesión; con `variety: 0` siempre sale la misma.
 - **Decisión del usuario tras probar en real (sustituye al recálculo):** la lista se genera **una sola vez** y no cambia; la sugerencia es siempre el **siguiente tema de la lista** tras el último cargado que esté en ella (`session.follow_list: true`, por defecto). Si se carga un tema fuera de orden, se tacha y se sigue desde su posición; un tema que no está en la lista no mueve la posición; destachar devuelve la posición al cargado anterior. Los comodines siguen existiendo (fila naranja) y se comparan con el último tema realmente cargado.
+- Al generar la sesión con un tema ya cargado (deck master; si no, el de fader más alto), la sesión empieza desde él, se tacha si está en la lista y la primera sugerencia es compatible con él.
+- Un tema cargado se reconoce en la sesión por ID, o si no por ruta del archivo, o por título + artista (en real hay temas importados dos veces con IDs distintos y no se tachaban).
 - Modo anterior, solo con `follow_list: false` — recálculo: el plan pasa a ser "temas cargados en orden + resto encadenado desde el último cargado". Si se carga el tema sugerido (no comodín), el plan no cambia. Un tema que no es de la sesión pero sí de la biblioteca sirve de ancla para la siguiente sugerencia (no se tacha nada).
 - Destachar: vuelve a estar disponible y, si era el último cargado, el ancla pasa al anterior.
 - Lo que ya está cargado en los decks al conectar no se tacha; solo las cargas posteriores.

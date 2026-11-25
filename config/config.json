@@ -24,7 +24,8 @@
     "reconnect_interval_s": 3,
     "position_jump_tolerance_s": 0.25,
     "max_consecutive_read_errors": 50,
-    "load_debounce_ms": 300
+    "load_debounce_ms": 300,
+    "empty_deck_without_bpm": true
   },
   "mixer": {
     "crossfader_enabled": false,

@@ -177,3 +177,25 @@ def test_follow_list_suggests_next_in_list(session_cfg):
     assert s.suggestion.track.id == order[5]
     s.unstrike(order[4])                                    # destachar vuelve a la posición anterior
     assert s.suggestion.track.id == order[1]
+
+
+def test_duplicate_track_with_other_id_is_struck(session_cfg):
+    s, _ = make_session(session_cfg, follow_list=True)
+    first = s.plan[0]
+    dup = Track.build(id="dup-" + first.id, title=first.title.upper(), artist=first.artist,
+                      bpm=first.bpm, key=first.key_raw)        # mismo tema importado dos veces
+    assert s.track_loaded(dup, deck=1) is True
+    assert s.is_struck(first.id)
+
+
+def test_generate_starts_from_loaded_track(library):
+    from rkbx_practice.app import PracticeController
+    from rkbx_practice.config import AppConfig
+    cfg = AppConfig()
+    cfg.session.optimize_time_budget_s = 0.05
+    cfg.session.wildcard_probability = 0
+    ctl = PracticeController(cfg, library)
+    loaded = library.tracks_of("11")[3]
+    s = ctl.generate("11", loaded=loaded, loaded_deck=1)
+    assert s.display_order[0].id == loaded.id and s.is_struck(loaded.id)
+    assert s.suggestion.track.id == s.display_order[1].id

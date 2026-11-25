@@ -29,12 +29,13 @@ class SnapshotEnricher:
     """
 
     def __init__(self, library: InMemoryLibrary | None, jump_tolerance_s: float = 0.25,
-                 stop_after_s: float = 0.3):
+                 stop_after_s: float = 0.3, empty_without_bpm: bool = True):
         self.library = library
         self.jump_tolerance_s = jump_tolerance_s
         # La posición en memoria puede no refrescarse en cada sondeo: un deck se
         # considera parado solo si no avanza durante `stop_after_s`.
         self.stop_after_s = stop_after_s
+        self.empty_without_bpm = empty_without_bpm
         self._prev: dict[int, _Prev] = {}
         self._resolve_cache: dict[str, str | None] = {}
 
@@ -52,6 +53,10 @@ class SnapshotEnricher:
     def enrich(self, res: ReadResult, t: float, wall: datetime | None = None) -> LiveSnapshot:
         decks = []
         for d in res.decks:
+            if self.empty_without_bpm and d.bpm is None and (d.track_path or d.track_id):
+                # Visto en 7.2.3: con el deck vacío la ruta conserva un valor antiguo, pero el
+                # BPM sí sale vacío. Sin BPM = deck vacío.
+                d = d.with_(track_path=None, track_id=None)
             track_id = d.track_id or self._resolve(d.track_path)
             key = track_id or d.track_path
             prev = self._prev.get(d.deck)

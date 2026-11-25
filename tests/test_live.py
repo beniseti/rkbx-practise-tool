@@ -39,7 +39,7 @@ def test_enricher_resolves_and_detects_jumps(library):
 
 def test_pipeline_track_loaded_ignores_initial_state(library):
     cfg = AppConfig()
-    e, p = SnapshotEnricher(library), LivePipeline(cfg)
+    e, p = SnapshotEnricher(library, empty_without_bpm=False), LivePipeline(cfg)
     ev = p.process(e.enrich(rr(DeckState(1, track_path=PATH1), DeckState(2)), t=0))
     assert ev == []   # lo que ya estaba cargado al conectar no se tacha
     ev = p.process(e.enrich(rr(DeckState(1, track_path=PATH1), DeckState(2, track_path=PATH2)), t=0.02))
@@ -54,7 +54,7 @@ def test_pipeline_track_loaded_ignores_initial_state(library):
 
 def test_pipeline_ignores_flicker_while_loading(library):
     cfg = AppConfig()
-    e, p = SnapshotEnricher(library), LivePipeline(cfg)
+    e, p = SnapshotEnricher(library, empty_without_bpm=False), LivePipeline(cfg)
     p.process(e.enrich(rr(DeckState(1, track_path=PATH1)), t=0))
     events = []
     # Durante la carga la ruta alterna entre el tema nuevo y el anterior; luego se estabiliza.
@@ -105,7 +105,7 @@ def test_poller_with_scripted_source_and_reconnect(library):
         return ScriptedSource(frames)
 
     lst = Listener()
-    poller = LivePoller(cfg, factory, SnapshotEnricher(library), LivePipeline(cfg), lst,
+    poller = LivePoller(cfg, factory, SnapshotEnricher(library, empty_without_bpm=False), LivePipeline(cfg), lst,
                         clock=clock, sleep=clock.sleep)
     poller.step()   # falla y espera
     assert lst.statuses[-1].mode == ConnectionMode.DISCONNECTED
@@ -176,3 +176,10 @@ def test_recorder_end_to_end(library, tmp_path):
     assert tr["compatibility"] is not None and "compatible" in tr["compatibility"]
     assert "Transiciones: 1" in summarize(data)
     assert rec.stop() is None
+
+
+def test_deck_without_bpm_is_empty(library):
+    e = SnapshotEnricher(library)
+    snap = e.enrich(rr(DeckState(1, track_path=PATH1, bpm=126.0), DeckState(2, track_path=PATH1, bpm=None)), t=0)
+    assert snap.decks[0].track_id == "1001"
+    assert snap.decks[1].track_id is None and snap.decks[1].track_path is None

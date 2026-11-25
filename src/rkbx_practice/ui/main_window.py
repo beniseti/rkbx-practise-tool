@@ -208,7 +208,9 @@ class MainWindow(QMainWindow):
                 return
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
-            session = self.ctl.generate(node_id, self._current_settings())
+            loaded, loaded_deck = self._currently_loaded()
+            session = self.ctl.generate(node_id, self._current_settings(),
+                                        loaded=loaded, loaded_deck=loaded_deck)
         finally:
             QApplication.restoreOverrideCursor()
         if session.excluded:
@@ -219,6 +221,17 @@ class MainWindow(QMainWindow):
         else:
             self.info_label.setText("")
         self._refresh_session()
+
+    def _currently_loaded(self):
+        """Tema que está sonando (deck master; si no, el de fader más alto)."""
+        snap = self._last_snapshot
+        if snap is None:
+            return None, None
+        decks = [d for d in snap.decks if d.track_id and self.library.track(d.track_id)]
+        if not decks:
+            return None, None
+        d = next((x for x in decks if x.is_master), None) or max(decks, key=lambda x: x.fader or 0.0)
+        return self.library.track(d.track_id), d.deck
 
     def _refresh_session(self) -> None:
         s = self.ctl.session

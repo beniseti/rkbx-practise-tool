@@ -16,7 +16,7 @@ from .events import LiveEvent, TrackLoaded
 from .history import SessionRecorder
 from .library.anlz import BeatGridCache
 from .library.memory_library import InMemoryLibrary
-from .library.models import NodeKind
+from .library.models import NodeKind, Track
 from .live import LivePipeline, LivePoller, SnapshotEnricher
 from .live.poller import LiveListener
 from .live.sources import DeckSource, MemorySource
@@ -62,15 +62,23 @@ class PracticeController:
         return "/".join(reversed(parts))
 
     def generate(self, node_id: str, settings: SessionConfig | None = None,
-                 seed: int | None = None) -> PracticeSession:
+                 seed: int | None = None, loaded: Track | None = None,
+                 loaded_deck: int | None = None) -> PracticeSession:
+        """Genera la sesión. Si hay un tema `loaded` ya cargado en un deck, la sesión empieza
+        desde él (se tacha si está en la lista) y la primera sugerencia es compatible con él."""
         settings = settings or self.cfg.session
         node = self.library.node(node_id)
         if node is None:
             raise KeyError(node_id)
         tracks = self.library.tracks_of(node_id)
-        gen = generate_session(tracks, settings, rng=random.Random(seed))
+        start = None
+        if loaded is not None and loaded.bpm and loaded.camelot:
+            start = next((t for t in tracks if t.id == loaded.id), None) or loaded
+        gen = generate_session(tracks, settings, start=start, rng=random.Random(seed))
         self.session = PracticeSession.from_generated(self.node_label(node_id), gen, settings,
                                                       rng=random.Random(seed))
+        if loaded is not None:
+            self.session.track_loaded(loaded, deck=loaded_deck)
         self.source_label = self.session.source_name
         log.info("Sesión generada desde %s (%s): %d temas, %d excluidos",
                  self.source_label, "carpeta" if node.kind == NodeKind.FOLDER else "playlist",
@@ -118,7 +126,8 @@ class PracticeController:
                 controller.recorder.handle(ev)
                 listener.on_events(ev)
 
-        enricher = SnapshotEnricher(self.library, self.cfg.live.position_jump_tolerance_s)
+        enricher = SnapshotEnricher(self.library, self.cfg.live.position_jump_tolerance_s,
+                                    empty_without_bpm=self.cfg.live.empty_deck_without_bpm)
         pipeline = LivePipeline(self.cfg, grids=self.grids.get)
         self.poller = LivePoller(self.cfg, self.source_factory, enricher, pipeline, _Tee())
         self.poller.start()
