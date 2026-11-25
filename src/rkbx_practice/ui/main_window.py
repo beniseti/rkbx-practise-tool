@@ -45,6 +45,60 @@ class LiveBridge(QObject):
         self.events.emit(list(events))
 
 
+def _field_grid(parent_layout: QGridLayout, row0: int, names: list[str]) -> dict[str, QLabel]:
+    """Filas «Nombre: valor» alineadas. Devuelve las etiquetas de valor."""
+    values = {}
+    for i, name in enumerate(names):
+        k = QLabel(name + ":")
+        k.setStyleSheet("color: palette(mid); font-weight: normal;")
+        v = QLabel("—")
+        v.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        parent_layout.addWidget(k, row0 + i, 0, alignment=Qt.AlignTop)
+        parent_layout.addWidget(v, row0 + i, 1)
+        values[name] = v
+    parent_layout.setColumnStretch(1, 1)
+    return values
+
+
+class SuggestionPanel(QFrame):
+    """Siguiente sugerencia con campos estructurados: Tema, BPM, Clave."""
+
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("suggestionPanel")
+        lay = QGridLayout(self)
+        lay.setContentsMargins(10, 6, 10, 6)
+        self.header = QLabel("Genera una sesión para empezar")
+        f = QFont()
+        f.setPointSize(f.pointSize() + 2)
+        f.setBold(True)
+        self.header.setFont(f)
+        lay.addWidget(self.header, 0, 0, 1, 2)
+        self.fields = _field_grid(lay, 1, ["Tema", "BPM", "Clave"])
+        big = QFont()
+        big.setPointSize(big.pointSize() + 2)
+        big.setBold(True)
+        for v in self.fields.values():
+            v.setFont(big)
+            v.setWordWrap(True)
+        self.set_color(ROW_COLORS["next"])
+
+    def set_color(self, color: str) -> None:
+        self.setStyleSheet(f"#suggestionPanel {{ background: {color}; border-radius: 4px; }}"
+                           " QLabel { color: #000; }")
+
+    def show_message(self, text: str) -> None:
+        self.header.setText(text)
+        for v in self.fields.values():
+            v.setText("—")
+
+    def show_track(self, header: str, title: str, bpm: str, key: str) -> None:
+        self.header.setText(header)
+        self.fields["Tema"].setText(title)
+        self.fields["BPM"].setText(bpm)
+        self.fields["Clave"].setText(key)
+
+
 class DeckWidget(QFrame):
     def __init__(self, deck: int):
         super().__init__()
@@ -54,21 +108,22 @@ class DeckWidget(QFrame):
         lay.setContentsMargins(6, 4, 6, 4)
         self.title = QLabel(f"Deck {deck}")
         self.title.setStyleSheet("font-weight: bold;")
-        self.track = QLabel("—")
-        self.track.setMinimumWidth(120)
-        self.bpm = QLabel("— BPM")
+        lay.addWidget(self.title, 0, 0, 1, 2)
+        self.fields = _field_grid(lay, 1, ["Tema", "BPM", "Clave"])
+        self.fields["Tema"].setWordWrap(True)
+        self.fields["Tema"].setMinimumWidth(120)
         self.fader = QProgressBar()
         self.fader.setRange(0, 100)
         self.fader.setTextVisible(False)
         self.fader.setFixedHeight(8)
-        lay.addWidget(self.title, 0, 0)
-        lay.addWidget(self.bpm, 0, 1, alignment=Qt.AlignRight)
-        lay.addWidget(self.track, 1, 0, 1, 2)
-        lay.addWidget(self.fader, 2, 0, 1, 2)
+        self.fader.setToolTip("Fader de canal")
+        lay.addWidget(self.fader, 4, 0, 1, 2)
 
-    def update_state(self, title: str, bpm: float | None, fader: float | None, master: bool | None):
-        self.track.setText(title)
-        self.bpm.setText(f"{bpm:.2f} BPM" if bpm else "— BPM")
+    def update_state(self, title: str, bpm: float | None, key: str, fader: float | None,
+                     master: bool | None):
+        self.fields["Tema"].setText(title)
+        self.fields["BPM"].setText(f"{bpm:.2f}" if bpm else "—")
+        self.fields["Clave"].setText(key)
         self.fader.setValue(int(round((fader or 0.0) * 100)))
         self.title.setText(f"Deck {self.deck}" + ("  ● MASTER" if master else ""))
 
@@ -139,13 +194,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self.settings_box)
 
         # --- sugerencia -----------------------------------------------
-        self.suggestion = QLabel("Genera una sesión para empezar")
-        self.suggestion.setWordWrap(True)
-        f = QFont()
-        f.setPointSize(f.pointSize() + 3)
-        f.setBold(True)
-        self.suggestion.setFont(f)
-        self.suggestion.setStyleSheet("padding: 6px; border-radius: 4px; background: #263238; color: #fff;")
+        self.suggestion = SuggestionPanel()
         root.addWidget(self.suggestion)
 
         # --- lista de la sesión ---------------------------------------
@@ -284,21 +333,21 @@ class MainWindow(QMainWindow):
     def _refresh_suggestion(self) -> None:
         s = self.ctl.session
         if s is None:
-            self.suggestion.setText("Genera una sesión para empezar")
+            self.suggestion.set_color(ROW_COLORS["next"])
+            self.suggestion.show_message("Genera una sesión para empezar")
             return
         sug = s.suggestion
         if sug is None:
-            self.suggestion.setText("¡Sesión completada!")
+            self.suggestion.set_color(ROW_COLORS["loaded"])
+            self.suggestion.show_message("¡Sesión completada!")
             return
         t = sug.track
-        tag = "🃏 COMODÍN · " if sug.is_wildcard else "Siguiente · "
-        rel = ""
+        header = "🃏 COMODÍN (fuera de orden, compatible)" if sug.is_wildcard else "Siguiente"
+        key = t.camelot_str
         if sug.from_anchor is not None and sug.from_anchor.key is not None:
-            rel = f" · {sug.from_anchor.key.label_es}"
-        self.suggestion.setText(f"{tag}{t.display}\n{t.bpm:.1f} BPM · {t.camelot_str}{rel}")
-        color = ROW_COLORS["wildcard"] if sug.is_wildcard else ROW_COLORS["next"]
-        fg = "#000"
-        self.suggestion.setStyleSheet(f"padding: 6px; border-radius: 4px; background: {color}; color: {fg};")
+            key += f"  ({sug.from_anchor.key.label_es})"
+        self.suggestion.set_color(ROW_COLORS["wildcard"] if sug.is_wildcard else ROW_COLORS["next"])
+        self.suggestion.show_track(header, t.display, f"{t.bpm:.1f}" if t.bpm else "—", key)
 
     def _row_clicked(self, row: int, _col: int) -> None:
         s = self.ctl.session
@@ -360,7 +409,7 @@ class MainWindow(QMainWindow):
                     continue
                 t = self.library.track(d.track_id) if d.track_id else None
                 title = t.display if t else ("(no está en la biblioteca)" if d.track_path else "—")
-                w.update_state(title, d.bpm, d.fader, d.is_master)
+                w.update_state(title, d.bpm, t.camelot_str if t else "—", d.fader, d.is_master)
         if self.ctl.recorder.recording and self._record_started is not None:
             c = self.ctl.recorder.counts()
             secs = int(time.monotonic() - self._record_started)
