@@ -108,11 +108,12 @@ def _pick(console: Console, mem: Memory, cands: list[Candidates], label: str) ->
 # Pasos por campo
 # ---------------------------------------------------------------------------
 def scan_bpm(console: Console, mem: Memory, deck: int) -> list[Candidates]:
-    bpm = console.ask_float(f"Deck {deck}: carga un tema, pon el pitch a 0 y escribe el BPM que muestra el deck")
+    bpm = console.ask_float(f"Deck {deck}: carga un tema, deja el pitch/tempo en 0 % (tempo original; pulsa en el % para resetearlo) "
+                           "y escribe el BPM que muestra el deck (p. ej. 128.00)")
     cands = [first_scan(mem, dt, approx(bpm, 0.06), save_as="a") for dt in ("f32", "f64")]
     console.say("    " + ", ".join(_summary(c) for c in cands))
     for i in range(3):
-        bpm = console.ask_float(f"Deck {deck}: mueve el pitch y escribe el nuevo BPM ({i + 1}/3)")
+        bpm = console.ask_float(f"Deck {deck}: mueve el slider de pitch/tempo (p. ej. a +3 %) y escribe el nuevo BPM que muestra ({i + 1}/3)")
         cands = [refine(mem, c, lambda v, s, b=bpm: np.abs(v.astype(np.float64) - b) <= 0.06) for c in cands]
         console.say("    " + ", ".join(_summary(c) for c in cands))
         if sum(len(c) for c in cands) <= 3:
