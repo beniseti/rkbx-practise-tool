@@ -62,6 +62,7 @@ class FakeRekordbox:
             self.m.write_f32(d + 0x20, s["bpm"])
             self.m.write_f64(d + 0x28, s["pos"])
             self.m.write_f32(d + 0x30, s["fader"])
+            self.m.write_f32(d + 0x50, s["fader"] ** 3)   # ganancia con curva "logarítmica"
             self.m.write_f32(d + 0x34, s["eq"])
             self.m.write(d + 0x38, bytes([1 if self.master == n else 0]))
         self.m.write(HEAP + 0x60, bytes([self.master - 1]))
@@ -202,7 +203,8 @@ def test_rerun_after_restart_keeps_only_common_chains(tmp_path):
     rb.m.write_ptr(BASE + 0x6000, HEAP + 0x8000)          # reinicio: la trampa se rompe
     out = run(mem, "7.2.3", [1], ["fader"], console, tmp_path)
     chains = load_candidates(candidates_path(tmp_path, "7.2.3"))["fader:1"]["chains"]
-    assert chains == [["0x5000", "0x10", "0x30"]]
+    assert ["0x5000", "0x10", "0x30"] in chains
+    assert not any(c[0] == "0x6000" for c in chains)     # la trampa no sobrevive
     assert json.loads(out.read_text())["decks"]["1"]["fader"]["chain"] == ["0x5000", "0x10", "0x30"]
 
 
@@ -217,3 +219,13 @@ def test_anchor_search_finds_path_from_stable_object():
     assert chains[0] == [0x5000, 0x10, 0x30]
     assert all(c[0] == 0x5000 for c in chains)
     assert resolve(mem, chains[0]) == HEAP + 0x1030
+
+
+def test_log_curve_fader_candidate_is_kept(tmp_path):
+    from tools.offset_detect.wizard import candidates_path, load_candidates
+    rb = FakeRekordbox(seed=7)
+    mem = FakeProcessMemory(rb.m, MOD_SIZE)
+    run(mem, "7.2.3", [1], ["fader"], ScriptedConsole(rb), tmp_path)
+    chains = load_candidates(candidates_path(tmp_path, "7.2.3"))["fader:1"]["chains"]
+    assert ["0x5000", "0x10", "0x30"] in chains     # posición lineal
+    assert ["0x5000", "0x10", "0x50"] in chains     # ganancia: a media carrera 0.47³ ≈ 10 % del rango

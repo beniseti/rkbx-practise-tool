@@ -108,6 +108,47 @@ def _pick(console: Console, mem: Memory, cands: list[Candidates], label: str) ->
 # ---------------------------------------------------------------------------
 # Pasos por campo
 # ---------------------------------------------------------------------------
+def _range_picks(console: Console, cands: list[Candidates], label: str, limit: int = 10):
+    """Todos los candidatos (hasta `limit`) de un control continuo, con su propio `map`.
+
+    Se guardan las cadenas de todos: tras reiniciar, --recheck se queda con las que funcionan.
+    """
+    out = []
+    for c in cands:
+        for i, a in enumerate(c.addresses.tolist()):
+            lo, hi = float(c.saved["lo"][i]), float(c.saved["hi"][i])
+            mid = float(c.saved["mid"][i]) if "mid" in c.saved else None
+            rel = (mid - lo) / (hi - lo) if mid is not None and hi != lo else None
+            console.say(f"    candidato {label} 0x{int(a):X} ({c.dtype}): mín {lo:.4g} · máx {hi:.4g}"
+                        + (f" · a la mitad {mid:.4g} ({rel:.0%} del rango)" if rel is not None else ""))
+            out.append((int(a), c.dtype, {"map": [lo, hi]}))
+    if not out:
+        console.say(f"    ✗ No se encontró {label}.")
+    elif len(out) > limit:
+        console.say(f"    (hay {len(out)} candidatos; se usan los {limit} primeros)")
+    return out[:limit]
+
+
+def describe_object(console: Console, mem: Memory, pmap: PointerMap, address: int) -> None:
+    """Diagnóstico: posibles vtables (punteros al módulo) justo antes de la dirección."""
+    import struct
+    mod_lo, mod_hi = mem.module_base, mem.module_base + mem.module_size
+    start = max(0, address - 0x800) & ~7
+    data = mem.read(start, address - start + 8)
+    if data is None:
+        return
+    shown = 0
+    for off in range(len(data) - 8, -1, -8):
+        v = struct.unpack_from("<Q", data, off)[0]
+        if mod_lo <= v < mod_hi:
+            count = len(pmap.slots_pointing_to(v))
+            console.say(f"      posible vtable a -0x{address - (start + off):X}: módulo+0x{v - mod_lo:X} "
+                        f"({count} objetos en memoria la usan)")
+            shown += 1
+            if shown >= 3:
+                break
+
+
 def scan_bpm(console: Console, mem: Memory, deck: int) -> list[Candidates]:
     bpm = console.ask_float(f"Deck {deck}: carga un tema, deja el pitch/tempo en 0 % (tempo original; pulsa en el % para resetearlo) "
                            "y escribe el BPM que muestra el deck (p. ej. 128.00)")
@@ -157,8 +198,10 @@ def scan_range_control(console: Console, mem: Memory, what: str, low_text: str, 
         (low_text, lambda v, s: v.astype(np.float64) < s["hi"].astype(np.float64) * 0.5 - 1e-6, "lo"),
         (high_text, lambda v, s: np.abs(v.astype(np.float64) - s["hi"]) <= np.abs(s["hi"]) * 0.01 + 1e-6, None),
         (low_text, lambda v, s: np.abs(v.astype(np.float64) - s["lo"]) <= np.abs(s["hi"]) * 0.01 + 1e-6, None),
-        (mid_text, lambda v, s: (v > s["lo"] + (s["hi"] - s["lo"]) * 0.15)
-         & (v < s["hi"] - (s["hi"] - s["lo"]) * 0.15), None),
+        # Solo "estrictamente entre mínimo y máximo": con curva logarítmica la ganancia real a
+        # media carrera puede estar muy cerca del mínimo (en 7.2.3 el filtro 15–85 % la descartaba).
+        (mid_text, lambda v, s: (v > s["lo"] + (s["hi"] - s["lo"]) * 0.002)
+         & (v < s["hi"] - (s["hi"] - s["lo"]) * 0.002), "mid"),
     ]
     cands = _narrow(console, mem, cands, steps, max_rounds=3)
     extra = {}
@@ -275,10 +318,12 @@ def chain_for(console: Console, mem: Memory, pmap: PointerMap, address: int, lab
 def build_offsets(version: str, found: list[Found], chains: dict[tuple, list[int]]) -> dict:
     out: dict = {"version": version, "module": "rekordbox.exe", "pointer_size": 8,
                  "decks": {}, "global": {}}
+    done = set()
     for f in found:
         chain = chains.get((f.field, f.deck))
-        if chain is None:
+        if chain is None or (f.field, f.deck) in done:
             continue
+        done.add((f.field, f.deck))
         spec = {"chain": to_hex(chain), "type": f.dtype, **f.extra}
         if f.deck is None:
             out["global"][f.field] = spec
@@ -364,17 +409,15 @@ def run(mem: Memory, version: str, decks: list[int], fields: list[str], console:
                 console, mem, "fader", f"Baja el fader de canal del deck {deck} del todo",
                 f"Sube el fader de canal del deck {deck} del todo",
                 f"Pon el fader de canal del deck {deck} más o menos a la mitad")
-            pick = _pick(console, mem, cands, "fader")
-            if pick:
-                found.append(Found("fader", deck, pick[0], pick[1], extra))
+            for addr, dt, ex in _range_picks(console, cands, "fader"):
+                found.append(Found("fader", deck, addr, dt, ex))
         if "eq_low" in fields:
             cands, extra = scan_range_control(
                 console, mem, "eq_low", f"Gira el EQ de graves (LOW) del deck {deck} al mínimo",
                 f"Gira el EQ de graves (LOW) del deck {deck} al máximo",
                 f"Pon el EQ de graves (LOW) del deck {deck} en el centro")
-            pick = _pick(console, mem, cands, "EQ de graves")
-            if pick:
-                found.append(Found("eq_low", deck, pick[0], pick[1], extra))
+            for addr, dt, ex in _range_picks(console, cands, "EQ de graves"):
+                found.append(Found("eq_low", deck, addr, dt, ex))
     if "is_master" in fields and len(decks) > 1:
         console.say("\n===== DECK MASTER =====")
         per_deck, idx = scan_master(console, mem, max(decks))
@@ -400,9 +443,8 @@ def run(mem: Memory, version: str, decks: list[int], fields: list[str], console:
         cands, extra = scan_range_control(
             console, mem, "crossfader", "Lleva el crossfader del todo a la IZQUIERDA (lado A)",
             "Lleva el crossfader del todo a la DERECHA (lado B)", "Pon el crossfader en el centro")
-        pick = _pick(console, mem, cands, "crossfader")
-        if pick:
-            found.append(Found("crossfader", None, pick[0], pick[1], extra))
+        for addr, dt, ex in _range_picks(console, cands, "crossfader"):
+            found.append(Found("crossfader", None, addr, dt, ex))
 
     console.say("\n===== CADENAS DE PUNTEROS =====\n(puede tardar un poco)")
     pmap = PointerMap.build(mem)
@@ -422,11 +464,18 @@ def run(mem: Memory, version: str, decks: list[int], fields: list[str], console:
                 all_chains = common
             elif not common:
                 console.say("      ninguna coincide con la sesión anterior: se sustituyen las candidatas.")
+        if f.field in ("fader", "eq_low", "crossfader"):
+            describe_object(console, mem, pmap, f.address)
         if all_chains:
-            chains[(f.field, f.deck)] = all_chains[0]
-            candidates[cand_key(f.field, f.deck)] = {
-                "field": f.field, "deck": f.deck, "type": f.dtype, "extra": f.extra,
-                "chains": [to_hex(c) for c in all_chains]}
+            key = cand_key(f.field, f.deck)
+            chains.setdefault((f.field, f.deck), all_chains[0])
+            entry = candidates.setdefault(key, {"field": f.field, "deck": f.deck, "type": f.dtype,
+                                                "extra": f.extra, "chains": [], "chain_meta": {}})
+            for c in all_chains:
+                h = to_hex(c)
+                entry["chains"].append(h)
+                # Cada dirección candidata tiene su propio tipo y rango.
+                entry["chain_meta"][" ".join(h)] = {"type": f.dtype, "extra": f.extra}
     data = build_offsets(version, found, chains)
     out = out_dir / f"{version}.json"
     merge_into_file(out, data)
@@ -497,17 +546,27 @@ RANGE_TEXTS = {
 }
 
 
+def meta_of(cand: dict, chain: list[str]) -> dict:
+    """Tipo y extra (map, scale…) de una cadena; cada dirección candidata puede tener los suyos."""
+    return cand.get("chain_meta", {}).get(" ".join(chain)) or {"type": cand["type"],
+                                                               "extra": cand.get("extra", {})}
+
+
 def recheck_one(console: Console, mem: Memory, cand: dict) -> list[list[str]]:
     """Guía unas acciones y devuelve las cadenas que siguen leyendo valores correctos."""
-    field, deck, ftype = cand["field"], cand["deck"], cand["type"]
+    field, deck = cand["field"], cand["deck"]
     chains: list[list[str]] = cand["chains"]
-    read = _raw_reader(mem, ftype)
+    readers: dict[str, object] = {}
+
+    def read(c: list[str]):
+        t = meta_of(cand, c)["type"]
+        if t not in readers:
+            readers[t] = _raw_reader(mem, t)
+        return readers[t](c)  # type: ignore[operator]
     d = deck
     console.say(f"\n--- {field}" + (f" deck {d}" if d else "") + f": {len(chains)} cadenas candidatas")
     if field in RANGE_TEXTS:
         hi_t, lo_t = (t.format(d=d) for t in RANGE_TEXTS[field])
-        mp = cand.get("extra", {}).get("map")
-        tol = abs(mp[1] - mp[0]) * 0.02 + 1e-6 if mp else None
         for _ in range(2):
             console.action(hi_t)
             his = {tuple(c): _num(read(c)) for c in chains}
@@ -523,6 +582,8 @@ def recheck_one(console: Console, mem: Memory, cand: dict) -> list[list[str]]:
                 hi, lo = his[tuple(c)], los[tuple(c)]
                 if hi is None or lo is None or hi - lo <= 1e-6:
                     continue
+                mp = meta_of(cand, c)["extra"].get("map")
+                tol = abs(mp[1] - mp[0]) * 0.02 + 1e-6 if mp else 0.0
                 if mp and (abs(hi - mp[1]) > tol or abs(lo - mp[0]) > tol):
                     continue
                 keep.append(c)
@@ -582,7 +643,8 @@ def recheck(console: Console, mem: Memory, version: str, out_dir: Path,
             continue
         console.say(f"    ✓ {key}: {len(survivors)} cadenas estables; se usa {survivors[0]}")
         updated[key] = {**cand, "chains": survivors}
-        found.append(Found(cand["field"], cand["deck"], 0, cand["type"], cand.get("extra", {})))
+        meta = meta_of(cand, survivors[0])
+        found.append(Found(cand["field"], cand["deck"], 0, meta["type"], meta["extra"]))
         best[(cand["field"], cand["deck"])] = [int(x, 16) for x in survivors[0]]
     if updated:
         save_candidates(cpath, updated)
