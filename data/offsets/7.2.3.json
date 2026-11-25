@@ -34,6 +34,15 @@
           1.0
         ],
         "_note": "Global en rekordbox.exe (0 = mínimo, 0.5 = centro, 1 = máximo). Tabla EQ: por deck HI, MID, LOW (f64), 0x18 bytes por deck."
+      },
+      "track_path": {
+        "chain": [
+          "0x59ff0a8",
+          "0x38",
+          "0x3f0"
+        ],
+        "type": "ptr_utf8",
+        "max_len": 512
       }
     },
     "2": {
@@ -68,6 +77,15 @@
         ],
         "type": "f32",
         "_note": "HIPÓTESIS: como el deck 1 pero con 0x8 en el segundo nivel (lista de decks). Comprobar con `live`."
+      },
+      "track_path": {
+        "chain": [
+          "0x59ff0a8",
+          "0x10",
+          "0x3f0"
+        ],
+        "type": "ptr_utf8",
+        "max_len": 512
       }
     }
   },
