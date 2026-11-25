@@ -376,4 +376,5 @@ Comprobar la licencia de cada repositorio antes de reutilizar código. (Hasta ah
 - Fases 1, 2, 3, 4 y 5 implementadas; fase 6 solo con puntos de enganche.
 - Tests: `pytest` (funcionan sin Rekordbox, sin Qt y en cualquier sistema). Incluyen una prueba de punta a punta con la fuente `--demo` y otra del asistente de offsets contra un "Rekordbox" simulado en memoria.
 - Comandos: ver `README.md` (`library`, `session`, `live`, `ui`, `history`, `offsets`, y `python -m tools.offset_detect`).
-- Falta la validación en Windows real con Rekordbox (§13): generar `data/offsets/<versión>.json` con el asistente y ajustar umbrales.
+- Validado en Windows real con Rekordbox 7.2.3: biblioteca, ventana PySide6, tachado y sugerencias en vivo; offsets de BPM, posición, ruta ANLZ, fader (controladora) y EQ de graves para los decks 1 y 2.
+- **Siguiente paso:** grabar una sesión real (transición normal, corte seco, fader cuts y bass swap), comparar el resumen de `history show` con lo que hizo el usuario y ajustar umbrales de `detection`.
