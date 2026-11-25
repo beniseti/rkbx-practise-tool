@@ -68,6 +68,16 @@
         ],
         "type": "f32",
         "_note": "Como el deck 1 con 0x8 en el segundo nivel (lista de decks). Confirmado con `live`."
+      },
+      "track_path": {
+        "chain": [
+          "0x59ff0a8",
+          "0x10",
+          "0x3f0"
+        ],
+        "type": "ptr_utf8",
+        "max_len": 512,
+        "_note": "Muestra el tema actual (confirmado con `live`). Pendiente de confirmar tras reinicio."
       }
     }
   },
