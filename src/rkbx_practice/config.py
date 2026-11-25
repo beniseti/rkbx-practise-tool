@@ -42,6 +42,7 @@ class SessionConfig:
     camelot_strictness: str = "moderate"
     wildcard_probability: float = 0.15
     optimize_time_budget_s: float = 1.0
+    follow_list: bool = True  # la sugerencia sigue el orden de la lista generada (sin recálculo)
     variety: float = 0.5   # 0 = siempre la misma sesión; más alto = sesiones más distintas
 
 

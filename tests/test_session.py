@@ -51,8 +51,9 @@ def test_order_with_start(session_cfg):
     assert gen.tracks[0].id == "3"
 
 
-def make_session(cfg, wildcard=0.0, seed=0):
+def make_session(cfg, wildcard=0.0, seed=0, follow_list=False):
     cfg.wildcard_probability = wildcard
+    cfg.follow_list = follow_list
     tracks = [T(i, 124 + i * 0.5, k) for i, k in
               enumerate(["8A", "8A", "9A", "9A", "10A", "10A", "11A", "11A"], start=1)]
     gen = generate_session(tracks, cfg, rng=random.Random(seed))
@@ -160,3 +161,19 @@ def test_adjacent_keys_are_compatible_both_ways():
     assert transition(a, T(2, 128, "1A"), cfg).compatible
     assert transition(a, T(3, 128, "3A"), cfg).compatible
     assert transition(a, T(4, 128, "1A"), SessionConfig(camelot_strictness="strict")).compatible
+
+
+def test_follow_list_suggests_next_in_list(session_cfg):
+    s, _ = make_session(session_cfg, follow_list=True)
+    order = [t.id for t in s.plan]
+    assert s.suggestion.track.id == order[0]
+    s.track_loaded(s.plan[0], deck=1)
+    assert s.suggestion.track.id == order[1]
+    s.track_loaded(s._by_id[order[4]], deck=2)            # salta a la posición 5
+    assert [t.id for t in s.plan] == order                 # la lista no cambia nunca
+    assert s.suggestion.track.id == order[5]               # sigue desde ahí
+    assert s.is_skipped(order[1])                          # la sugerida se marca saltada
+    s.track_loaded(T(99, 140, "1B"), deck=1)               # tema de fuera: no mueve la posición
+    assert s.suggestion.track.id == order[5]
+    s.unstrike(order[4])                                    # destachar vuelve a la posición anterior
+    assert s.suggestion.track.id == order[1]

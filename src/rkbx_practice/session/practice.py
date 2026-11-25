@@ -3,8 +3,10 @@
 - El tachado ocurre al CARGAR un tema en un deck (`track_loaded`).
 - Un tema cargado por error se puede destachar (`unstrike`): vuelve a estar disponible.
 - El tachado no persiste entre sesiones: cada práctica empieza de cero.
-- Si se carga un tema distinto del sugerido, el resto de la sesión se
-  recalcula a partir de él.
+- `follow_list` (por defecto): la lista se genera una vez y no cambia; la
+  sugerencia es el siguiente tema de la lista tras el último cargado.
+- Sin `follow_list`: si se carga un tema distinto del sugerido, el resto de la
+  sesión se recalcula a partir de él.
 - Con probabilidad `wildcard_probability` la sugerencia es un comodín: un tema
   fuera del orden previsto pero compatible en tono y BPM con el último cargado.
 """
@@ -52,7 +54,8 @@ class PracticeSession:
         self.struck: dict[str, StrikeInfo] = {}
         self.skipped: set[str] = set()      # sugeridos que el usuario se saltó (cargó otro)
         self.load_order: list[str] = []      # temas de la sesión cargados, en orden
-        self.anchor: Track | None = None     # último tema cargado (de la sesión o no)
+        self.anchor: Track | None = None     # posición en la lista desde la que se sugiere
+        self.last_loaded: Track | None = None  # último tema cargado (de la sesión o no)
         self._suggestion: Suggestion | None = None
         self._recompute_suggestion()
 
@@ -100,9 +103,16 @@ class PracticeSession:
             if in_session and track.id not in self.struck:
                 self.struck[track.id] = StrikeInfo(deck, at)
                 self.load_order.append(track.id)
-            self.anchor = track
-            if not followed_plan:
-                self._replan_from(track)
+            self.last_loaded = track
+            if self.settings.follow_list:
+                # Lista fija: la siguiente sugerencia es el siguiente tema de la lista tras el
+                # último cargado que esté EN la lista (un tema de fuera no mueve la posición).
+                if in_session:
+                    self.anchor = track
+            else:
+                self.anchor = track
+                if not followed_plan:
+                    self._replan_from(track)
             self._recompute_suggestion()
             return in_session
 
@@ -116,7 +126,8 @@ class PracticeSession:
                 self.load_order.remove(track_id)
             if self.anchor is not None and self.anchor.id == track_id:
                 self.anchor = self._by_id[self.load_order[-1]] if self.load_order else None
-            self._replan_from(self.anchor)
+            if not self.settings.follow_list:
+                self._replan_from(self.anchor)
             self._recompute_suggestion()
             return True
 
@@ -153,7 +164,7 @@ class PracticeSession:
         if planned is None:
             self._suggestion = None
             return
-        anchor = self.anchor
+        anchor = self.last_loaded or self.anchor
         if anchor is not None and self.rng.random() < self.settings.wildcard_probability:
             candidates = [t for t in self.remaining
                           if t.id != planned.id and t.id != anchor.id
