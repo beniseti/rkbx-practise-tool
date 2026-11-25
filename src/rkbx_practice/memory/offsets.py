@@ -30,7 +30,8 @@ valor en `addr`. Si un puntero intermedio es 0, el campo no está disponible
 Tipos: `f32`, `f64`, `i32`, `u32`, `u8`, `bool`, `utf8`, `utf16` (cadena en línea)
 y `ptr_utf8`, `ptr_utf16` (la dirección final contiene un puntero a la cadena).
 Normalización opcional: `map: [min, max]` → 0..1 (con recorte), `invert`, `scale`.
-Archivos cuyo nombre empieza por `_` se ignoran (plantillas/ejemplos).
+Archivos cuyo nombre empieza por `_` (plantillas) o termina en `.candidates.json` (datos de
+trabajo del asistente) se ignoran.
 """
 
 from __future__ import annotations
@@ -189,7 +190,8 @@ def load_offsets_dir(directory: str | Path) -> dict[str, OffsetTable]:
         log.warning("No existe el directorio de offsets %s", directory)
         return tables
     for path in sorted(directory.glob("*.json")):
-        if path.name.startswith("_"):
+        # `_*.json` son plantillas; `*.candidates.json` son datos de trabajo de offset_detect.
+        if path.name.startswith("_") or path.name.endswith(".candidates.json"):
             continue
         try:
             data = json.loads(path.read_text(encoding="utf-8"))

@@ -95,6 +95,7 @@ def test_offsets_dir(tmp_path):
     (tmp_path / "7.2.20.json").write_text(json.dumps(table_dict()))
     (tmp_path / "_example.json").write_text(json.dumps({**table_dict(), "version": "1.0.0"}))
     (tmp_path / "broken.json").write_text("{nope")
+    (tmp_path / "7.2.20.candidates.json").write_text("{}")
     tables = load_offsets_dir(tmp_path)
     assert set(tables) == {"7.2.20"}
     assert find_offsets(tmp_path, "7.2.20.0") is not None

@@ -76,8 +76,7 @@
           "0x1a0"
         ],
         "type": "f32",
-<<<<<<< HEAD
-        "_note": "HIPÓTESIS: como el deck 1 pero con 0x8 en el segundo nivel (lista de decks). Comprobar con `live`."
+        "_note": "Como el deck 1 con 0x8 en el segundo nivel (lista de decks). Confirmado con `live`."
       },
       "track_path": {
         "chain": [
@@ -87,9 +86,6 @@
         ],
         "type": "ptr_utf8",
         "max_len": 512
-=======
-        "_note": "Como el deck 1 con 0x8 en el segundo nivel (lista de decks). Confirmado con `live`."
->>>>>>> 60f3d0b42f3be03955dafaa2128cd188552fca6d
       }
     }
   },
