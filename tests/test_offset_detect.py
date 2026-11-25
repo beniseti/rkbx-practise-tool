@@ -189,3 +189,18 @@ def test_recheck_discards_chain_broken_by_restart(tmp_path):
     data = json.loads(out.read_text())
     assert data["decks"]["1"]["fader"]["chain"] == ["0x5000", "0x10", "0x30"]
     assert data["decks"]["1"]["fader"]["map"] == [0.0, 1.0]
+
+
+def test_rerun_after_restart_keeps_only_common_chains(tmp_path):
+    from tools.offset_detect.wizard import candidates_path, load_candidates
+    rb = FakeRekordbox(seed=5)
+    rb.m.write_ptr(BASE + 0x6000, HEAP + 0x1000)          # trampa
+    mem = FakeProcessMemory(rb.m, MOD_SIZE)
+    console = ScriptedConsole(rb)
+    run(mem, "7.2.3", [1], ["fader"], console, tmp_path)
+    assert len(load_candidates(candidates_path(tmp_path, "7.2.3"))["fader:1"]["chains"]) >= 2
+    rb.m.write_ptr(BASE + 0x6000, HEAP + 0x8000)          # reinicio: la trampa se rompe
+    out = run(mem, "7.2.3", [1], ["fader"], console, tmp_path)
+    chains = load_candidates(candidates_path(tmp_path, "7.2.3"))["fader:1"]["chains"]
+    assert chains == [["0x5000", "0x10", "0x30"]]
+    assert json.loads(out.read_text())["decks"]["1"]["fader"]["chain"] == ["0x5000", "0x10", "0x30"]

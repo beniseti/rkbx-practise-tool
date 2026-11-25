@@ -238,7 +238,8 @@ def _slot_strings(mem: Memory, slots: list[int]) -> dict[int, tuple[str, bool]]:
 # ---------------------------------------------------------------------------
 def chain_for(console: Console, mem: Memory, pmap: PointerMap, address: int, label: str) -> list[list[int]]:
     """Todas las cadenas estáticas hacia `address` (la primera es la más corta)."""
-    chains = find_chains(mem, pmap, address, max_results=300, max_nodes=6000)
+    chains = find_chains(mem, pmap, address, max_depth=SEARCH["max_depth"], max_offset=SEARCH["max_offset"],
+                         max_results=SEARCH["max_results"], max_nodes=SEARCH["max_nodes"])
     if not chains:
         console.say(f"    ✗ {label}: sin cadena de punteros estática (prueba con más profundidad)")
         return []
@@ -306,6 +307,9 @@ def validate_file(console: Console, mem: Memory, path: Path) -> None:
         except Exception as exc:  # noqa: BLE001
             console.say(f"  global {name:<10} ✗ {exc}")
 
+
+# Parámetros de la búsqueda de cadenas (ajustables con --depth / --max-offset).
+SEARCH = {"max_depth": 6, "max_offset": 0x1000, "max_results": 5000, "max_nodes": 20000}
 
 ALL_FIELDS = ["track_path", "bpm", "position", "fader", "eq_low", "is_master", "crossfader"]
 
@@ -382,6 +386,17 @@ def run(mem: Memory, version: str, decks: list[int], fields: list[str], console:
     for f in found:
         label = f"{f.field}" + (f" deck {f.deck}" if f.deck else "")
         all_chains = chain_for(console, mem, pmap, f.address, label)
+        previous = load_candidates(candidates_path(out_dir, version)).get(cand_key(f.field, f.deck))
+        if all_chains and previous:
+            # Cadenas que también aparecieron en una sesión anterior de Rekordbox = estables.
+            old_set = {tuple(c) for c in previous["chains"]}
+            common = [c for c in all_chains if tuple(to_hex(c)) in old_set]
+            if common and len(common) < len(all_chains):
+                console.say(f"      {len(common)} de ellas ya aparecieron en la sesión anterior: "
+                            "se guardan solo esas (estables tras reiniciar).")
+                all_chains = common
+            elif not common:
+                console.say("      ninguna coincide con la sesión anterior: se sustituyen las candidatas.")
         if all_chains:
             chains[(f.field, f.deck)] = all_chains[0]
             candidates[cand_key(f.field, f.deck)] = {
@@ -473,6 +488,11 @@ def recheck_one(console: Console, mem: Memory, cand: dict) -> list[list[str]]:
             his = {tuple(c): _num(read(c)) for c in chains}
             console.action(lo_t)
             los = {tuple(c): _num(read(c)) for c in chains}
+            readable = [(his[tuple(c)], los[tuple(c)]) for c in chains
+                        if his[tuple(c)] is not None and los[tuple(c)] is not None]
+            console.say(f"    {len(readable)} de {len(chains)} cadenas se pueden leer"
+                        + (f"; ejemplos (arriba→abajo): "
+                           + ", ".join(f"{h:.3g}→{l:.3g}" for h, l in readable[:5]) if readable else ""))
             keep = []
             for c in chains:
                 hi, lo = his[tuple(c)], los[tuple(c)]
@@ -557,9 +577,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--fields", nargs="+", default=ALL_FIELDS, choices=ALL_FIELDS)
     p.add_argument("--out-dir", default=str(ROOT / "data" / "offsets"))
     p.add_argument("--validate", help="Valida un archivo de offsets con la memoria actual")
+    p.add_argument("--depth", type=int, default=SEARCH["max_depth"],
+                   help="Niveles máximos de la cadena de punteros (por defecto 6)")
+    p.add_argument("--max-offset", type=lambda x: int(x, 0), default=SEARCH["max_offset"],
+                   help="Desplazamiento máximo por nivel (por defecto 0x1000)")
     p.add_argument("--recheck", action="store_true",
                    help="Tras reiniciar Rekordbox: filtra las cadenas candidatas y se queda con las estables")
     args = p.parse_args(argv)
+    SEARCH["max_depth"], SEARCH["max_offset"] = args.depth, args.max_offset
     console = Console()
     try:
         mem = WinProcessMemory(args.process)
