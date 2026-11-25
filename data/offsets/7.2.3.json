@@ -23,6 +23,17 @@
           1.0
         ],
         "_note": "Variable global dentro de rekordbox.exe (posición lineal 0..1). Confirmado estable tras reiniciar Rekordbox."
+      },
+      "eq_low": {
+        "chain": [
+          "0x58b33a8"
+        ],
+        "type": "f64",
+        "map": [
+          0.0,
+          1.0
+        ],
+        "_note": "Global en rekordbox.exe (0 = mínimo, 0.5 = centro, 1 = máximo). Pendiente de confirmar tras reinicio."
       }
     },
     "2": {
