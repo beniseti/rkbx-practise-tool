@@ -486,8 +486,8 @@ def run(mem: Memory, version: str, decks: list[int], fields: list[str], console:
             old_set = {tuple(c) for c in previous["chains"]}
             common = [c for c in all_chains if tuple(to_hex(c)) in old_set]
             if common and len(common) < len(all_chains):
-                console.say(f"      {len(common)} de ellas ya aparecieron en la sesión anterior: "
-                            "se guardan solo esas (estables tras reiniciar).")
+                console.say(f"      {len(common)} de ellas ya aparecieron en la búsqueda anterior: se guardan "
+                            "solo esas (solo indica estabilidad si reiniciaste Rekordbox entre medias).")
                 all_chains = common
             elif not common:
                 console.say("      ninguna coincide con la sesión anterior: se sustituyen las candidatas.")
@@ -715,6 +715,36 @@ def watch(console: Console, mem: Memory, start_rva: int, end_rva: int, dtype: st
         pass
 
 
+def compare_decks(console: Console, out_dir: Path, version: str, field: str,
+                  deck_a: int = 1, deck_b: int = 2, limit: int = 15) -> list[tuple[list[str], list[str]]]:
+    """Pares de cadenas (deck A, deck B) que solo difieren en UN desplazamiento.
+
+    Las estructuras de Rekordbox por deck suelen ser iguales salvo el índice del deck
+    (así salieron BPM y ruta ANLZ en 7.2.3); esos pares son los candidatos más fiables.
+    """
+    cands = load_candidates(candidates_path(out_dir, version))
+    a = cands.get(cand_key(field, deck_a), {}).get("chains", [])
+    b = cands.get(cand_key(field, deck_b), {}).get("chains", [])
+    if not a or not b:
+        console.say(f"Faltan candidatas de {field} para los decks {deck_a} y {deck_b}.")
+        return []
+    b_by_len: dict[int, list[list[str]]] = {}
+    for c in b:
+        b_by_len.setdefault(len(c), []).append(c)
+    pairs = []
+    for ca in a:
+        for cb in b_by_len.get(len(ca), []):
+            diff = [i for i, (x, y) in enumerate(zip(ca, cb)) if x != y]
+            if len(diff) == 1 and diff[0] > 0:
+                pairs.append((ca, cb))
+    pairs.sort(key=lambda p: (len(p[0]), sum(int(x, 16) for x in p[0][1:])))
+    console.say(f"{len(pairs)} pares de {field} que solo difieren en el índice del deck:")
+    for ca, cb in pairs[:limit]:
+        i = next(i for i, (x, y) in enumerate(zip(ca, cb)) if x != y)
+        console.say(f"  deck {deck_a}: {ca}   deck {deck_b}: {cb}   (cambia el nivel {i}: {ca[i]} → {cb[i]})")
+    return pairs
+
+
 def main(argv: list[str] | None = None) -> int:
     sys.path.insert(0, str(ROOT / "src"))
     from rkbx_practice.memory.offsets import normalize_version
@@ -736,11 +766,22 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--watch", nargs=2, metavar=("DESDE", "HASTA"), type=lambda x: int(x, 0),
                    help="Muestra en directo los valores que cambian entre módulo+DESDE y módulo+HASTA")
     p.add_argument("--watch-type", choices=["f64", "f32"], default="f64")
+    p.add_argument("--compare-decks", metavar="CAMPO",
+                   help="Muestra las cadenas candidatas del deck 1 y 2 que solo difieren en el índice "
+                        "del deck (no necesita Rekordbox)")
     p.add_argument("--recheck", action="store_true",
                    help="Tras reiniciar Rekordbox: filtra las cadenas candidatas y se queda con las estables")
     args = p.parse_args(argv)
     SEARCH["max_depth"], SEARCH["max_offset"] = args.depth, args.max_offset
     console = Console()
+    if args.compare_decks:
+        tables = sorted(Path(args.out_dir).glob("*.candidates.json"))
+        if not tables:
+            console.say("No hay archivos de candidatas.")
+            return 1
+        version = tables[-1].name.replace(".candidates.json", "")
+        compare_decks(console, Path(args.out_dir), version, args.compare_decks)
+        return 0
     try:
         mem = WinProcessMemory(args.process)
     except Exception as exc:  # noqa: BLE001

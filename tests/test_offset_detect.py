@@ -295,3 +295,16 @@ def test_track_path_ignores_previous_track_slot(tmp_path):
     data = json.loads(out.read_text())
     assert data["decks"]["1"]["track_path"]["chain"] == ["0x5000", "0x10", "0x40"]   # no 0x48 (anterior)
     assert data["decks"]["2"]["track_path"]["chain"] == ["0x5000", "0x20", "0x40"]
+
+
+def test_compare_decks_finds_index_only_pairs(tmp_path):
+    from tools.offset_detect.wizard import compare_decks, save_candidates, candidates_path
+    save_candidates(candidates_path(tmp_path, "7.2.3"), {
+        "position:1": {"field": "position", "deck": 1, "type": "f64", "chains": [
+            ["0x58d38c8", "0x50", "0x90", "0x138"], ["0x58d38c8", "0x0", "0x2b0", "0x1b8"]]},
+        "position:2": {"field": "position", "deck": 2, "type": "f64", "chains": [
+            ["0x58d38c8", "0x550", "0xf0"], ["0x58d38c8", "0x8", "0x2b0", "0x1b8"]]},
+    })
+    console = ScriptedConsole(FakeRekordbox())
+    pairs = compare_decks(console, tmp_path, "7.2.3", "position")
+    assert pairs == [(["0x58d38c8", "0x0", "0x2b0", "0x1b8"], ["0x58d38c8", "0x8", "0x2b0", "0x1b8"])]
