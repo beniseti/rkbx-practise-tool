@@ -245,7 +245,7 @@ class MainWindow(QMainWindow):
         if sug is not None:
             row = next((i for i, (t, _) in enumerate(entries) if t.id == sug.track.id), None)
             if row is not None:
-                self.table.scrollToItem(self.table.item(row, 1), QAbstractItemView.PositionAtCenter)
+                self.table.scrollToItem(self.table.item(row, 1), QAbstractItemView.EnsureVisible)
         self._refresh_suggestion()
 
     def _refresh_suggestion(self) -> None:
@@ -296,6 +296,16 @@ class MainWindow(QMainWindow):
         loaded = [e for e in events if isinstance(e, TrackLoaded)]
         if loaded:
             self._refresh_session()
+            s = self.ctl.session
+            for ev in loaded:
+                t = self.library.track(ev.track_id) if ev.track_id else None
+                if t is None:
+                    continue
+                if s is not None and s.contains(t.id):
+                    msg = f"Deck {ev.deck}: tachado «{t.display}»"
+                else:
+                    msg = f"Deck {ev.deck}: «{t.display}» no está en la sesión (no se tacha)"
+                self.statusBar().showMessage(msg, 6000)
         for ev in unknown:
             self.statusBar().showMessage(
                 f"Deck {ev.deck}: tema no encontrado en master.db ({ev.track_path})", 8000)

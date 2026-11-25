@@ -209,7 +209,8 @@ Implementación:
 
 - Coste de A→B = diferencia de BPM / tolerancia + coste de la relación Camelot (misma 0 · vecina 0,5 · relativa 0,8 · energy boost 1,5 · +7 2,5) + 0,75 si es a mitad/doble tempo + 20 si es incompatible. Las incompatibles se penalizan pero no se prohíben: la sesión incluye todos los temas y marca los saltos incompatibles.
 - Orden: cadena voraz desde varios inicios + mejora local 2-opt (coste direccional) y Or-opt, con límite de tiempo.
-- Recálculo: el plan pasa a ser "temas cargados en orden + resto encadenado desde el último cargado". Si se carga el tema sugerido (no comodín), el plan no cambia. Un tema que no es de la sesión pero sí de la biblioteca sirve de ancla para la siguiente sugerencia (no se tacha nada).
+- La lista que ve el usuario mantiene el orden original de la sesión; los temas cargados se tachan en su sitio (decisión tras probar en real: reordenar la lista parecía "recargar la sesión").
+- Recálculo (interno, solo afecta a las sugerencias): el plan pasa a ser "temas cargados en orden + resto encadenado desde el último cargado". Si se carga el tema sugerido (no comodín), el plan no cambia. Un tema que no es de la sesión pero sí de la biblioteca sirve de ancla para la siguiente sugerencia (no se tacha nada).
 - Destachar: vuelve a estar disponible y, si era el último cargado, el ancla pasa al anterior.
 - Lo que ya está cargado en los decks al conectar no se tacha; solo las cargas posteriores.
 

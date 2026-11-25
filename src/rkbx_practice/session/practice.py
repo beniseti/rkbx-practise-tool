@@ -46,6 +46,9 @@ class PracticeSession:
     def __post_init__(self) -> None:
         self._lock = threading.RLock()
         self._by_id = {t.id: t for t in self.plan}
+        # Orden que ve el usuario: fijo. El recálculo solo cambia `plan` (orden interno de
+        # las próximas sugerencias); así la lista no "salta" y el tachado se ve en su sitio.
+        self.display_order: list[Track] = list(self.plan)
         self.struck: dict[str, StrikeInfo] = {}
         self.load_order: list[str] = []      # temas de la sesión cargados, en orden
         self.anchor: Track | None = None     # último tema cargado (de la sesión o no)
@@ -74,9 +77,9 @@ class PracticeSession:
         return [t for t in self.plan if t.id not in self.struck]
 
     def entries(self) -> list[tuple[Track, bool]]:
-        """Lista para la UI: (tema, tachado) en el orden actual del plan."""
+        """Lista para la UI: (tema, tachado) en el orden original de la sesión (no cambia)."""
         with self._lock:
-            return [(t, t.id in self.struck) for t in self.plan]
+            return [(t, t.id in self.struck) for t in self.display_order]
 
     # ------------------------------------------------------------------
     def track_loaded(self, track: Track, deck: int | None = None,

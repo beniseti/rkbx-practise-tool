@@ -119,3 +119,12 @@ def test_session_completes(session_cfg):
         s.track_loaded(s.suggestion.track, deck=1)
     assert s.suggestion is None
     assert len(s.struck) == len(tracks)
+
+
+def test_display_order_is_stable(session_cfg):
+    s, _ = make_session(session_cfg)
+    shown = [t.id for t, _ in s.entries()]
+    s.track_loaded(s.plan[-1], deck=1)          # tema distinto del sugerido: hay recálculo
+    after = s.entries()
+    assert [t.id for t, _ in after] == shown    # la lista visible no se reordena
+    assert dict((t.id, struck) for t, struck in after)[shown[-1]] is True
