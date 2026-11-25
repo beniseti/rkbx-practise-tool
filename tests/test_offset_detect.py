@@ -53,10 +53,19 @@ class FakeRekordbox:
         self.str_next += (len(data) + 15) // 16 * 16
         return addr
 
-    def load(self, n):
-        self.loads += 1
-        path = f"C:/share/PIONEER/USBANLZ/{self.loads:03x}/track{self.loads}/ANLZ0000.DAT"
-        self.m.write_ptr(HEAP + 0x1000 * n + 0x40, self._new_string(path))
+    def load(self, n, addr=None):
+        """Carga un tema (nuevo, o el de `addr`). Como Rekordbox, guarda también el ANTERIOR (+0x48)."""
+        prev = getattr(self, "current", {}).get(n)
+        if addr is None:
+            self.loads += 1
+            path = f"C:/share/PIONEER/USBANLZ/{self.loads:03x}/track{self.loads}/ANLZ0000.DAT"
+            addr = self._new_string(path)
+        self.current = getattr(self, "current", {})
+        self.current[n] = addr
+        self.m.write_ptr(HEAP + 0x1000 * n + 0x40, addr)
+        if prev is not None:
+            self.m.write_ptr(HEAP + 0x1000 * n + 0x48, prev)
+        return addr
 
     def flush(self):
         for n, s in self.state.items():
@@ -91,8 +100,13 @@ class ScriptedConsole:
         rb, t = self.rb, text.lower()
         n = self._deck(t)
         s = rb.state[n]
-        if "carga otro tema" in t or "carga un tema" in t:
+        if "primer tema" in t:
+            rb.load(n, addr=self.first[n])
+        elif "carga otro tema" in t:
             rb.load(n)
+        elif "carga un tema" in t:
+            self.first = getattr(self, "first", {})
+            self.first[n] = rb.load(n)
         elif "fader" in t:
             s["fader"] = 0.0 if "baja" in t else 1.0 if "sube" in t else 0.47
         elif "eq de graves" in t:
@@ -272,3 +286,12 @@ def test_watch_reports_changes():
     mem.read = read
     watch(console, mem, 0x7000, 0x7020, interval=0, iterations=2)
     assert any("módulo+0x7008" in l and "0.7" in l for l in console.log)
+
+
+def test_track_path_ignores_previous_track_slot(tmp_path):
+    rb = FakeRekordbox(seed=10)
+    mem = FakeProcessMemory(rb.m, MOD_SIZE)
+    out = run(mem, "7.2.3", [1, 2], ["track_path"], ScriptedConsole(rb), tmp_path)
+    data = json.loads(out.read_text())
+    assert data["decks"]["1"]["track_path"]["chain"] == ["0x5000", "0x10", "0x40"]   # no 0x48 (anterior)
+    assert data["decks"]["2"]["track_path"]["chain"] == ["0x5000", "0x20", "0x40"]

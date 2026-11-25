@@ -257,6 +257,7 @@ def scan_track_path(console: Console, mem: Memory, deck: int, decks: int) -> lis
         for slot in pmap.slots_pointing_to(addr):
             slots[slot] = (text, utf16)
     console.say(f"    {len(strings)} rutas ANLZ en memoria, {len(slots)} punteros a ellas")
+    first = dict(slots)   # valor de cada posición con el PRIMER tema cargado
     for i in range(3):
         console.action(f"Carga OTRO tema distinto en el deck {deck} ({i + 1}/3)")
         new = _slot_strings(mem, list(slots))
@@ -268,8 +269,18 @@ def scan_track_path(console: Console, mem: Memory, deck: int, decks: int) -> lis
             new = _slot_strings(mem, list(slots))
             slots = {s: new[s] for s in slots if s in new and new[s][0] == slots[s][0]}
             console.say(f"    {len(slots)} punteros sin cambios")
+        # Rekordbox también guarda el tema ANTERIOR de cada deck (pasa los filtros de arriba).
+        # Al volver a cargar el primer tema, solo la posición del tema ACTUAL vuelve a mostrarlo.
+        console.action(f"Vuelve a cargar en el deck {deck} el PRIMER tema que cargaste en este paso")
+        new = _slot_strings(mem, list(slots))
+        slots = {s: new[s] for s in slots if s in new and new[s][0] == first[s][0]}
+        console.say(f"    {len(slots)} punteros muestran otra vez el primer tema")
+        console.action(f"Carga OTRO tema distinto en el deck {deck}")
+        new = _slot_strings(mem, list(slots))
+        slots = {s: new[s] for s in slots if s in new and new[s][0] != first[s][0]}
         if len(slots) <= 5:
             break
+        first = dict(slots)
     return [(s, utf16) for s, (_t, utf16) in slots.items()]
 
 
@@ -623,6 +634,10 @@ def recheck_one(console: Console, mem: Memory, cand: dict) -> list[list[str]]:
         console.action(f"Carga OTRO tema distinto en el deck {d}")
         chains = [c for c in chains if isinstance(read(c), str) and "USBANLZ" in read(c).upper()
                   and read(c) != before[tuple(c)]]
+        console.say(f"    quedan {len(chains)}")
+        # Descarta la posición del tema ANTERIOR: al recargar el primero, solo la actual lo muestra.
+        console.action(f"Vuelve a cargar en el deck {d} el PRIMER tema que cargaste en este paso")
+        chains = [c for c in chains if read(c) == before[tuple(c)]]
         console.say(f"    quedan {len(chains)}")
     elif field in ("is_master", "master_deck"):
         n_decks = 2
