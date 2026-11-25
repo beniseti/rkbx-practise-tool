@@ -669,6 +669,37 @@ def recheck(console: Console, mem: Memory, version: str, out_dir: Path,
         console.say(f"\nActualizado {out}. Si quieres más seguridad, reinicia Rekordbox y repite --recheck.")
 
 
+def watch(console: Console, mem: Memory, start_rva: int, end_rva: int, dtype: str = "f64",
+          interval: float = 0.3, iterations: int | None = None) -> None:
+    """Muestra en directo qué valores de una zona del módulo cambian (para localizar controles
+    vecinos: crossfader, EQ, trim…). Ctrl+C para salir."""
+    import time
+    dt = np.dtype("<f8") if dtype == "f64" else np.dtype("<f4")
+    size = end_rva - start_rva
+    base = mem.module_base + start_rva
+    prev = None
+    console.say(f"Vigilando módulo+0x{start_rva:X}..0x{end_rva:X} ({dtype}). Mueve UN control cada vez. "
+                "Ctrl+C para salir.")
+    n = 0
+    try:
+        while iterations is None or n < iterations:
+            data = mem.read(base, size)
+            if data is None:
+                console.say("No se puede leer esa zona.")
+                return
+            arr = np.frombuffer(data[: size - size % dt.itemsize], dtype=dt)
+            if prev is not None:
+                changed = np.nonzero((arr != prev) & np.isfinite(arr))[0]
+                for i in changed[:12]:
+                    console.say(f"  módulo+0x{start_rva + int(i) * dt.itemsize:X}: "
+                                f"{float(prev[i]):.4g} → {float(arr[i]):.4g}")
+            prev = arr.copy()
+            n += 1
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
     sys.path.insert(0, str(ROOT / "src"))
     from rkbx_practice.memory.offsets import normalize_version
@@ -687,6 +718,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--anchor", nargs="+", metavar="CAMPO",
                    help="Buscar solo caminos que salgan de los objetos de campos ya estables del "
                         "archivo de offsets (p. ej. --anchor bpm). Mucho más fiable tras reiniciar.")
+    p.add_argument("--watch", nargs=2, metavar=("DESDE", "HASTA"), type=lambda x: int(x, 0),
+                   help="Muestra en directo los valores que cambian entre módulo+DESDE y módulo+HASTA")
+    p.add_argument("--watch-type", choices=["f64", "f32"], default="f64")
     p.add_argument("--recheck", action="store_true",
                    help="Tras reiniciar Rekordbox: filtra las cadenas candidatas y se queda con las estables")
     args = p.parse_args(argv)
@@ -703,6 +737,9 @@ def main(argv: list[str] | None = None) -> int:
                                          args.anchor, args.decks)
         if not SEARCH["anchors"]:
             return 1
+    if args.watch:
+        watch(console, mem, args.watch[0], args.watch[1], args.watch_type)
+        return 0
     if args.validate:
         validate_file(console, mem, Path(args.validate))
         return 0

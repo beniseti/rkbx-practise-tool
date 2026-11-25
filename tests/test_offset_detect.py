@@ -245,3 +245,30 @@ def test_static_global_candidate_is_preferred(tmp_path):
     spec = json.loads(out.read_text())["decks"]["1"]["fader"]
     assert spec["chain"] == ["0x7000"] and spec["type"] == "f64"
     assert any("[GLOBAL, estable]" in line for line in console.log)
+
+
+def test_watch_reports_changes():
+    from tools.offset_detect.wizard import watch
+    rb = FakeRekordbox(seed=9)
+    rb.global_fader = True
+    rb.flush()
+    mem = FakeProcessMemory(rb.m, MOD_SIZE)
+
+    class C(ScriptedConsole):
+        pass
+
+    console = C(rb)
+    import threading
+    calls = {"n": 0}
+    orig = mem.read
+
+    def read(a, n):
+        calls["n"] += 1
+        if calls["n"] == 2:              # entre la 1.ª y la 2.ª lectura se mueve el fader del deck 2
+            rb.state[2]["fader"] = 0.7
+            rb.flush()
+        return orig(a, n)
+
+    mem.read = read
+    watch(console, mem, 0x7000, 0x7020, interval=0, iterations=2)
+    assert any("módulo+0x7008" in l and "0.7" in l for l in console.log)

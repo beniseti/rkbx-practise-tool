@@ -24,6 +24,19 @@
         ],
         "_note": "Variable global dentro de rekordbox.exe (posición lineal 0..1). Confirmado estable tras reiniciar Rekordbox."
       }
+    },
+    "2": {
+      "fader": {
+        "chain": [
+          "0x5a876d0"
+        ],
+        "type": "f64",
+        "map": [
+          0.0,
+          1.0
+        ],
+        "_note": "Global contigua al fader del deck 1 (+8 bytes). Hallada con offset_detect."
+      }
     }
   },
   "global": {}
