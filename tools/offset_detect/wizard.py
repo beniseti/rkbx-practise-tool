@@ -4,6 +4,7 @@ Uso (Windows, con Rekordbox abierto):
     python -m tools.offset_detect                 # todo, deck a deck
     python -m tools.offset_detect --fields bpm fader --decks 1
     python -m tools.offset_detect --validate data/offsets/7.2.20.json
+    python -m tools.offset_detect --recheck      # tras reiniciar Rekordbox: deja solo cadenas estables
 
 El asistente pide UNA acción cada vez y espera a que pulses Enter. Solo LEE la
 memoria de Rekordbox: nunca escribe en ella.
@@ -235,13 +236,14 @@ def _slot_strings(mem: Memory, slots: list[int]) -> dict[int, tuple[str, bool]]:
 # ---------------------------------------------------------------------------
 # Cadenas y archivo final
 # ---------------------------------------------------------------------------
-def chain_for(console: Console, mem: Memory, pmap: PointerMap, address: int, label: str) -> list[int] | None:
-    chains = find_chains(mem, pmap, address)
+def chain_for(console: Console, mem: Memory, pmap: PointerMap, address: int, label: str) -> list[list[int]]:
+    """Todas las cadenas estáticas hacia `address` (la primera es la más corta)."""
+    chains = find_chains(mem, pmap, address, max_results=300, max_nodes=6000)
     if not chains:
         console.say(f"    ✗ {label}: sin cadena de punteros estática (prueba con más profundidad)")
-        return None
+        return []
     console.say(f"    ✓ {label}: {len(chains)} cadenas; mejor: {to_hex(chains[0])}")
-    return chains[0]
+    return chains
 
 
 def build_offsets(version: str, found: list[Found], chains: dict[tuple, list[int]]) -> dict:
@@ -270,24 +272,28 @@ def merge_into_file(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+class _Access:
+    """Adaptador Memory -> MemoryAccess de la app (solo lectura)."""
+
+    def __init__(self, mem: Memory):
+        self.mem = mem
+        self.module_base = mem.module_base
+        self.pointer_size = mem.pointer_size
+
+    def read_bytes(self, a: int, n: int) -> bytes:
+        from rkbx_practice.memory.reader import MemoryReadError
+        data = self.mem.read(a, n)
+        if data is None:
+            raise MemoryReadError(hex(a))
+        return data
+
+
 def validate_file(console: Console, mem: Memory, path: Path) -> None:
     sys.path.insert(0, str(ROOT / "src"))
     from rkbx_practice.memory.offsets import OffsetTable
     from rkbx_practice.memory.reader import read_field
-
-    class Access:
-        module_base = mem.module_base
-        pointer_size = mem.pointer_size
-
-        def read_bytes(self, a, n):
-            from rkbx_practice.memory.reader import MemoryReadError
-            data = mem.read(a, n)
-            if data is None:
-                raise MemoryReadError(hex(a))
-            return data
-
     table = OffsetTable.from_dict(json.loads(path.read_text(encoding="utf-8")))
-    acc = Access()
+    acc = _Access(mem)
     for deck in table.supported_decks():
         for name, spec in table.deck_fields(deck).items():
             try:
@@ -372,20 +378,172 @@ def run(mem: Memory, version: str, decks: list[int], fields: list[str], console:
     console.say("\n===== CADENAS DE PUNTEROS =====\n(puede tardar un poco)")
     pmap = PointerMap.build(mem)
     chains = {}
+    candidates: dict[str, dict] = {}
     for f in found:
         label = f"{f.field}" + (f" deck {f.deck}" if f.deck else "")
-        chain = chain_for(console, mem, pmap, f.address, label)
-        if chain is not None:
-            chains[(f.field, f.deck)] = chain
-            if resolve(mem, chain) != f.address:
-                console.say("      (aviso: la cadena no resuelve a la dirección actual)")
+        all_chains = chain_for(console, mem, pmap, f.address, label)
+        if all_chains:
+            chains[(f.field, f.deck)] = all_chains[0]
+            candidates[cand_key(f.field, f.deck)] = {
+                "field": f.field, "deck": f.deck, "type": f.dtype, "extra": f.extra,
+                "chains": [to_hex(c) for c in all_chains]}
     data = build_offsets(version, found, chains)
     out = out_dir / f"{version}.json"
     merge_into_file(out, data)
-    console.say(f"\nGuardado en {out}.\nRecomendado: cierra y abre Rekordbox y ejecuta "
-                f"`python -m tools.offset_detect --validate {out}` para confirmar que las cadenas "
-                "sobreviven a un reinicio.")
+    cand_path = candidates_path(out_dir, version)
+    save_candidates(cand_path, candidates)
+    console.say(f"\nGuardado en {out} (y todas las cadenas candidatas en {cand_path.name}).\n"
+                "IMPORTANTE: una cadena puede no sobrevivir a un reinicio de Rekordbox. Cierra y abre "
+                "Rekordbox y ejecuta `python -m tools.offset_detect --recheck` para quedarte solo con "
+                "las cadenas estables. Repítelo tras otro reinicio para mayor seguridad.")
     return out
+
+
+# ---------------------------------------------------------------------------
+# Candidatas y re-comprobación tras reiniciar Rekordbox
+# ---------------------------------------------------------------------------
+def cand_key(field: str, deck: int | None) -> str:
+    return f"{field}:{deck if deck is not None else 'global'}"
+
+
+def candidates_path(out_dir: Path, version: str) -> Path:
+    return out_dir / f"{version}.candidates.json"
+
+
+def load_candidates(path: Path) -> dict[str, dict]:
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def save_candidates(path: Path, new: dict[str, dict]) -> None:
+    data = load_candidates(path)
+    data.update(new)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
+
+
+def _raw_reader(mem: Memory, ftype: str):
+    """Lee el valor crudo de una cadena (sin `map`), o None si no se puede."""
+    sys.path.insert(0, str(ROOT / "src"))
+    from rkbx_practice.memory.offsets import FieldSpec
+    from rkbx_practice.memory.reader import read_field
+    acc = _Access(mem)
+
+    def read(chain_hex: list[str]):
+        try:
+            return read_field(acc, FieldSpec.from_dict("x", {"chain": chain_hex, "type": ftype}))
+        except Exception:  # noqa: BLE001
+            return None
+    return read
+
+
+def _num(v) -> float | None:
+    if v is None or isinstance(v, str):
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if np.isfinite(f) else None
+
+
+def _filter(chains: list[list[str]], read, keep) -> list[list[str]]:
+    return [c for c in chains if keep(read(c))]
+
+
+RANGE_TEXTS = {
+    "fader": ("Sube el fader de canal del deck {d} del todo", "Baja el fader de canal del deck {d} del todo"),
+    "eq_low": ("Gira el EQ de graves (LOW) del deck {d} al máximo", "Gira el EQ de graves (LOW) del deck {d} al mínimo"),
+    "crossfader": ("Lleva el crossfader del todo a la DERECHA (lado B)", "Lleva el crossfader del todo a la IZQUIERDA (lado A)"),
+}
+
+
+def recheck_one(console: Console, mem: Memory, cand: dict) -> list[list[str]]:
+    """Guía unas acciones y devuelve las cadenas que siguen leyendo valores correctos."""
+    field, deck, ftype = cand["field"], cand["deck"], cand["type"]
+    chains: list[list[str]] = cand["chains"]
+    read = _raw_reader(mem, ftype)
+    d = deck
+    console.say(f"\n--- {field}" + (f" deck {d}" if d else "") + f": {len(chains)} cadenas candidatas")
+    if field in RANGE_TEXTS:
+        hi_t, lo_t = (t.format(d=d) for t in RANGE_TEXTS[field])
+        mp = cand.get("extra", {}).get("map")
+        tol = abs(mp[1] - mp[0]) * 0.02 + 1e-6 if mp else None
+        for _ in range(2):
+            console.action(hi_t)
+            his = {tuple(c): _num(read(c)) for c in chains}
+            console.action(lo_t)
+            los = {tuple(c): _num(read(c)) for c in chains}
+            keep = []
+            for c in chains:
+                hi, lo = his[tuple(c)], los[tuple(c)]
+                if hi is None or lo is None or hi - lo <= 1e-6:
+                    continue
+                if mp and (abs(hi - mp[1]) > tol or abs(lo - mp[0]) > tol):
+                    continue
+                keep.append(c)
+            chains = keep
+            console.say(f"    quedan {len(chains)}")
+    elif field == "bpm":
+        for i in range(2):
+            b = console.ask_float(f"Deck {d}: mueve el pitch y escribe el BPM que muestra ({i + 1}/2)")
+            chains = _filter(chains, read, lambda v, b=b: _num(v) is not None and abs(_num(v) - b) <= 0.06)
+            console.say(f"    quedan {len(chains)}")
+    elif field == "position":
+        scale = cand.get("extra", {}).get("scale", 1.0)
+        for i in range(2):
+            t = console.ask_float(f"Deck {d}: reproduce, PAUSA y escribe el tiempo transcurrido ({i + 1}/2)")
+            chains = _filter(chains, read, lambda v, t=t: _num(v) is not None
+                             and abs(_num(v) * scale - t) <= 0.15)
+            console.say(f"    quedan {len(chains)}")
+    elif field == "track_path":
+        console.action(f"Carga un tema en el deck {d}")
+        before = {tuple(c): read(c) for c in chains}
+        console.action(f"Carga OTRO tema distinto en el deck {d}")
+        chains = [c for c in chains if isinstance(read(c), str) and "USBANLZ" in read(c).upper()
+                  and read(c) != before[tuple(c)]]
+        console.say(f"    quedan {len(chains)}")
+    elif field in ("is_master", "master_deck"):
+        n_decks = 2
+        for target in (1, 2, 1):
+            console.action(f"Pon el deck {target} como MASTER")
+            if field == "is_master":
+                want = 1 if target == d else 0
+            else:
+                want = target - 1
+            chains = _filter(chains, read, lambda v, w=want: _num(v) is not None and int(_num(v)) == w)
+        console.say(f"    quedan {len(chains)} (con {n_decks} decks)")
+    return chains
+
+
+def recheck(console: Console, mem: Memory, version: str, out_dir: Path,
+            only: list[str] | None, decks: list[int] | None) -> None:
+    cpath = candidates_path(out_dir, version)
+    cands = load_candidates(cpath)
+    if not cands:
+        console.say(f"No hay {cpath.name}. Ejecuta antes el asistente (python -m tools.offset_detect).")
+        return
+    updated: dict[str, dict] = {}
+    found: list[Found] = []
+    best: dict[tuple, list[int]] = {}
+    for key, cand in cands.items():
+        if only and cand["field"] not in only:
+            continue
+        if decks and cand["deck"] is not None and cand["deck"] not in decks:
+            continue
+        survivors = recheck_one(console, mem, cand)
+        if not survivors:
+            console.say(f"    ✗ {key}: ninguna cadena sobrevive. Vuelve a ejecutar el asistente para "
+                        f"este campo (--fields {cand['field']}).")
+            continue
+        console.say(f"    ✓ {key}: {len(survivors)} cadenas estables; se usa {survivors[0]}")
+        updated[key] = {**cand, "chains": survivors}
+        found.append(Found(cand["field"], cand["deck"], 0, cand["type"], cand.get("extra", {})))
+        best[(cand["field"], cand["deck"])] = [int(x, 16) for x in survivors[0]]
+    if updated:
+        save_candidates(cpath, updated)
+        out = out_dir / f"{version}.json"
+        merge_into_file(out, build_offsets(version, found, best))
+        console.say(f"\nActualizado {out}. Si quieres más seguridad, reinicia Rekordbox y repite --recheck.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -399,6 +557,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--fields", nargs="+", default=ALL_FIELDS, choices=ALL_FIELDS)
     p.add_argument("--out-dir", default=str(ROOT / "data" / "offsets"))
     p.add_argument("--validate", help="Valida un archivo de offsets con la memoria actual")
+    p.add_argument("--recheck", action="store_true",
+                   help="Tras reiniciar Rekordbox: filtra las cadenas candidatas y se queda con las estables")
     args = p.parse_args(argv)
     console = Console()
     try:
@@ -409,6 +569,10 @@ def main(argv: list[str] | None = None) -> int:
     version = normalize_version(mem.version()) or "desconocida"
     if args.validate:
         validate_file(console, mem, Path(args.validate))
+        return 0
+    if args.recheck:
+        only = None if args.fields == ALL_FIELDS else args.fields
+        recheck(console, mem, version, Path(args.out_dir), only, args.decks)
         return 0
     run(mem, version, args.decks, args.fields, console, Path(args.out_dir))
     return 0

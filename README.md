@@ -67,7 +67,8 @@ Para generarlos, con Rekordbox abierto:
 ```powershell
 python -m tools.offset_detect                    # guía paso a paso (una acción cada vez)
 python -m tools.offset_detect --fields fader eq_low --decks 1 2
-python -m tools.offset_detect --validate data/offsets/7.2.20.json   # tras reiniciar Rekordbox
+python -m tools.offset_detect --recheck      # tras reiniciar Rekordbox: deja solo cadenas estables
+python -m tools.offset_detect --validate data/offsets/7.2.20.json
 ```
 
 La herramienta solo lee memoria. Ver `data/offsets/README.md`.
