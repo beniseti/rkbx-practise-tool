@@ -38,6 +38,7 @@ class LightsManager:
         if cfg.lights.send_to_simulator and hasattr(self.sender, "add_target"):
             self.sender.add_target("127.0.0.1", cfg.lights.simulator_port)
         self.simulator = None
+        self.external_simulator = False
         from .palette import palette_for
 
         def track_palette(tid):
@@ -104,13 +105,24 @@ class LightsManager:
     def start_simulator(self) -> str:
         """Arranca el simulador dentro de la app y envía también a él. Devuelve la URL."""
         from .simulator import LightSimulator
+        lc = self.cfg.lights
         if self.simulator is None:
-            lc = self.cfg.lights
-            self.simulator = LightSimulator(udp_port=lc.simulator_port, http_port=lc.simulator_http_port,
-                                            leds=lc.simulator_leds, effects=lc.effects, layout=lc.layout)
-            self.simulator.start()
+            sim = LightSimulator(udp_port=lc.simulator_port, http_port=lc.simulator_http_port,
+                                 leds=lc.simulator_leds, effects=lc.effects, layout=lc.layout)
+            try:
+                sim.start()
+            except OSError:
+                # Puerto ocupado: ya hay un simulador abierto (p. ej. `lights simulate`). Antes esto
+                # daba error y no se le enviaba nada; ahora se usa ese simulador.
+                sim.stop()
+                log.info("Simulador ya en marcha en el puerto %s: se usa ese", lc.simulator_port)
+                if hasattr(self.sender, "add_target"):
+                    self.sender.add_target("127.0.0.1", lc.simulator_port)
+                self.external_simulator = True
+                return f"http://127.0.0.1:{lc.simulator_http_port}/"
+            self.simulator = sim
             if hasattr(self.sender, "add_target"):
-                self.sender.add_target("127.0.0.1", self.simulator.udp_addr[1])
+                self.sender.add_target("127.0.0.1", sim.udp_addr[1])
         return self.simulator.url
 
     def stop_simulator(self) -> None:

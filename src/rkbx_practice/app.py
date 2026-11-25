@@ -135,8 +135,9 @@ class PracticeController:
                 if lights is not None and lights.engine.enabled:
                     try:
                         lights.engine.update(s)
-                    except Exception:  # noqa: BLE001  (las luces nunca deben parar el bucle)
+                    except Exception as exc:  # noqa: BLE001  (las luces nunca deben parar el bucle)
                         log.exception("Error en el motor de luces")
+                        lights.engine.status = f"Error en el motor de luces: {exc!r} (ver consola)"
                 listener.on_snapshot(s)
 
             def on_events(self, ev):

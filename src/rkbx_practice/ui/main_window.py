@@ -515,6 +515,9 @@ class MainWindow(QMainWindow):
                 d_ = snap_.deck(lead)
                 if d_ is not None and d_.track_id in lights.problems:
                     status = f"Deck {lead}: sin luces: {lights.problems[d_.track_id]}"
+            targets = getattr(lights.sender, "targets", [])
+            status += (f" · enviados {lights.sender.sent} a "
+                       + ", ".join(f"{h}:{p}" for h, p in targets))
             if lights.sender.errors:
                 status += f" · {lights.sender.errors} errores de envío"
             self.lights_check.setToolTip(status)
@@ -566,7 +569,10 @@ class MainWindow(QMainWindow):
                                 "¿Hay otro simulador en marcha (python -m rkbx_practice lights simulate)?")
             return
         webbrowser.open(url)
-        self.statusBar().showMessage(f"Simulador en {url} · activa «Luces» para enviarle los efectos", 8000)
+        if not self.lights_check.isChecked():
+            self.lights_check.setChecked(True)     # abrir el simulador sin luces no sirve de nada
+        extra = " (ya estaba abierto: se usa ese)" if self.ctl.lights.external_simulator else ""
+        self.statusBar().showMessage(f"Simulador en {url}{extra} · luces activadas", 8000)
 
     def _show_lights_editor(self) -> None:
         from .lights_editor import LightsEditor

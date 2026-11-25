@@ -523,3 +523,28 @@ def test_save_value_keeps_rest_of_config(tmp_path):
     cfg = load_config(p)
     assert cfg.lights.latency_compensation_ms == 85 and cfg.lights.esp32_port == 4210
     assert cfg.rekordbox.decks == 2 and cfg.source_path == p
+
+
+def test_start_simulator_reuses_running_one(library, tmp_path):
+    from rkbx_practice.library.anlz import BeatGridCache
+    from rkbx_practice.lights.manager import LightsManager
+    from rkbx_practice.lights.simulator import LightSimulator
+    running = LightSimulator(udp_port=0, http_port=0)
+    running.start()                                       # «lights simulate» ya abierto
+    try:
+        cfg = AppConfig()
+        cfg.lights.events_dir = str(tmp_path)
+        cfg.lights.simulator_port = running.udp_addr[1]
+        cfg.lights.simulator_http_port = running.http_addr[1]
+        mgr = LightsManager(cfg, library, BeatGridCache())
+        url = mgr.start_simulator()                       # antes: OSError y nada enviado
+        assert mgr.external_simulator and str(running.http_addr[1]) in url
+        assert ("127.0.0.1", running.udp_addr[1]) in mgr.sender.targets
+        mgr.sender.send(LightCommand("flash", {}))
+        for _ in range(50):
+            if running.received:
+                break
+            time.sleep(0.02)
+        assert running.received and running.received[0]["cmd"]["fx"] == "flash"
+    finally:
+        running.stop()
