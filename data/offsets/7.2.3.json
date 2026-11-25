@@ -33,7 +33,7 @@
           0.0,
           1.0
         ],
-        "_note": "Global en rekordbox.exe (0 = mínimo, 0.5 = centro, 1 = máximo). Pendiente de confirmar tras reinicio."
+        "_note": "Global en rekordbox.exe (0 = mínimo, 0.5 = centro, 1 = máximo). Tabla EQ: por deck HI, MID, LOW (f64), 0x18 bytes por deck."
       }
     },
     "2": {
@@ -47,6 +47,27 @@
           1.0
         ],
         "_note": "Global contigua al fader del deck 1 (+8 bytes). Hallada con offset_detect."
+      },
+      "eq_low": {
+        "chain": [
+          "0x58b33c0"
+        ],
+        "type": "f64",
+        "map": [
+          0.0,
+          1.0
+        ],
+        "_note": "Global: tabla EQ, deck 2 LOW (deck 1 LOW + 0x18). Confirmado con --watch."
+      },
+      "bpm": {
+        "chain": [
+          "0x58d38c8",
+          "0x8",
+          "0x2b0",
+          "0x1a0"
+        ],
+        "type": "f32",
+        "_note": "HIPÓTESIS: como el deck 1 pero con 0x8 en el segundo nivel (lista de decks). Comprobar con `live`."
       }
     }
   },
