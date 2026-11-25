@@ -50,6 +50,7 @@ class LiveConfig:
     reconnect_interval_s: float = 3.0
     position_jump_tolerance_s: float = 0.25
     max_consecutive_read_errors: int = 50
+    load_debounce_ms: int = 300
 
 
 @dataclass

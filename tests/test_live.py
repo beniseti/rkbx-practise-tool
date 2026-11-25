@@ -43,10 +43,26 @@ def test_pipeline_track_loaded_ignores_initial_state(library):
     ev = p.process(e.enrich(rr(DeckState(1, track_path=PATH1), DeckState(2)), t=0))
     assert ev == []   # lo que ya estaba cargado al conectar no se tacha
     ev = p.process(e.enrich(rr(DeckState(1, track_path=PATH1), DeckState(2, track_path=PATH2)), t=0.02))
+    assert not [x for x in ev if isinstance(x, TrackLoaded)]     # aún no estable (300 ms)
+    ev = p.process(e.enrich(rr(DeckState(1, track_path=PATH1), DeckState(2, track_path=PATH2)), t=0.4))
     loads = [x for x in ev if isinstance(x, TrackLoaded)]
     assert len(loads) == 1 and loads[0].deck == 2 and loads[0].track_id == "1002"
-    ev = p.process(e.enrich(rr(DeckState(1, track_path=PATH1), DeckState(2, track_path=PATH2)), t=0.04))
+    assert loads[0].t == 0.02                                      # fechada cuando apareció
+    ev = p.process(e.enrich(rr(DeckState(1, track_path=PATH1), DeckState(2, track_path=PATH2)), t=0.8))
     assert not [x for x in ev if isinstance(x, TrackLoaded)]
+
+
+def test_pipeline_ignores_flicker_while_loading(library):
+    cfg = AppConfig()
+    e, p = SnapshotEnricher(library), LivePipeline(cfg)
+    p.process(e.enrich(rr(DeckState(1, track_path=PATH1)), t=0))
+    events = []
+    # Durante la carga la ruta alterna entre el tema nuevo y el anterior; luego se estabiliza.
+    seq = [PATH2, PATH1, PATH2, PATH1, PATH2] + [PATH2] * 20
+    for i, path in enumerate(seq, start=1):
+        events += p.process(e.enrich(rr(DeckState(1, track_path=path)), t=i * 0.05))
+    loads = [x for x in events if isinstance(x, TrackLoaded)]
+    assert [l.track_id for l in loads] == ["1002"]
 
 
 class Listener:
@@ -94,7 +110,7 @@ def test_poller_with_scripted_source_and_reconnect(library):
     poller.step()   # falla y espera
     assert lst.statuses[-1].mode == ConnectionMode.DISCONNECTED
     assert clock.t == cfg.live.reconnect_interval_s
-    for _ in range(6):
+    for _ in range(30):
         clock.t += 0.02
         poller.step()
     assert lst.statuses[-1].mode == ConnectionMode.FULL

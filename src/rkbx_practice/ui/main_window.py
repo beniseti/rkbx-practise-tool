@@ -222,17 +222,28 @@ class MainWindow(QMainWindow):
 
     def _refresh_session(self) -> None:
         s = self.ctl.session
-        self.table.setRowCount(0)
         if s is None:
+            self.table.setRowCount(0)
             return
         sug = s.suggestion
         entries = s.entries()
-        self.table.setRowCount(len(entries))
+        ids = [t.id for t, _ in entries]
+        current_ids = [self.table.item(r, 1).data(Qt.UserRole) if self.table.item(r, 1) else None
+                       for r in range(self.table.rowCount())]
+        rebuild = ids != current_ids      # solo al generar una sesión nueva
+        if rebuild:
+            self.table.setRowCount(0)
+            self.table.setRowCount(len(entries))
         for row, (track, struck) in enumerate(entries):
             cells = [str(row + 1), track.display, f"{track.bpm:.1f}" if track.bpm else "—", track.camelot_str]
             for col, text in enumerate(cells):
-                item = QTableWidgetItem(text)
+                item = QTableWidgetItem(text) if rebuild else self.table.item(row, col)
                 item.setData(Qt.UserRole, track.id)
+                font = item.font()
+                font.setStrikeOut(False)
+                item.setFont(font)
+                item.setBackground(QBrush())
+                item.setForeground(QBrush())
                 # Verde = ya cargado (tachado) · amarillo = siguiente sugerencia (naranja si es
                 # comodín) · rojo = sugerencia que te saltaste (sigue disponible).
                 if struck:
@@ -249,8 +260,9 @@ class MainWindow(QMainWindow):
                     item.setForeground(QBrush(QColor("#000000")))
                 if col in (0, 2, 3):
                     item.setTextAlignment(Qt.AlignCenter)
-                self.table.setItem(row, col, item)
-        if sug is not None:
+                if rebuild:
+                    self.table.setItem(row, col, item)
+        if sug is not None and rebuild:
             row = next((i for i, (t, _) in enumerate(entries) if t.id == sug.track.id), None)
             if row is not None:
                 self.table.scrollToItem(self.table.item(row, 1), QAbstractItemView.EnsureVisible)

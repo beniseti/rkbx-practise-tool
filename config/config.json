@@ -21,7 +21,8 @@
     "poll_interval_ms": 20,
     "reconnect_interval_s": 3,
     "position_jump_tolerance_s": 0.25,
-    "max_consecutive_read_errors": 50
+    "max_consecutive_read_errors": 50,
+    "load_debounce_ms": 300
   },
   "mixer": {
     "crossfader_enabled": false,

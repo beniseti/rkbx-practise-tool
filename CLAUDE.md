@@ -104,7 +104,8 @@ rkbx-practise-tool/
     "poll_interval_ms": 20,
     "reconnect_interval_s": 3,
     "position_jump_tolerance_s": 0.25,
-    "max_consecutive_read_errors": 50
+    "max_consecutive_read_errors": 50,
+    "load_debounce_ms": 300
   },
   "mixer": {
     "crossfader_enabled": false,
@@ -146,6 +147,7 @@ Claves añadidas durante la implementación:
 - `session.optimize_time_budget_s`: tiempo máximo de optimización del orden (el recálculo en directo usa como máximo 0,25 s).
 - `live.position_jump_tolerance_s`: margen para detectar saltos de posición (loops, hot cues, arrastre).
 - `live.max_consecutive_read_errors`: lecturas fallidas seguidas antes de reconectar.
+- `live.load_debounce_ms`: una carga de tema solo cuenta si la ruta lleva ese tiempo estable (evita cargas fantasma mientras Rekordbox carga).
 - `mixer.crossfader_assign`: lado del crossfader de cada deck (`A`, `B` o `THRU`).
 - `detection.on_beat_tolerance_ms`: tolerancia para considerar un fader cut "a tiempo".
 - `detection.bass_swap_bar_tolerance_beats`: tolerancia (en beats) para considerar que un bass swap cae en inicio de compás/frase.
