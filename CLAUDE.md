@@ -330,7 +330,7 @@ Trabajar en este orden. Las fases 1 y 2 no necesitan Rekordbox abierto.
 
 ## 13. Pendiente de confirmar
 
-- **Versión exacta de Rekordbox** instalada: `________` (el usuario la indicará; la más reciente vista soportada en repositorios públicos es la 7.2.20).
+- **Versión exacta de Rekordbox** instalada: **7.2.3** (`C:\Program Files\rekordbox\rekordbox 7.2.3\rekordbox.exe`). Los offsets irán en `data/offsets/7.2.3.json`.
 - Que la ruta ANLZ en memoria permite identificar el tema en master.db.
 - Direcciones de faders, EQ de graves, crossfader y deck master para esa versión.
 - Formato final de los comandos UDP y lista completa de efectos.
