@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComb
                                QLabel, QMainWindow, QMessageBox, QProgressBar, QPushButton,
                                QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
+from . import theme
 from ..app import PracticeController
 from ..config import STRICTNESS_LEVELS, AppConfig
 from ..events import BassSwap, CutBurst, TrackLoaded, TransitionEvent
@@ -23,9 +24,9 @@ from ..state import ConnectionMode, ConnectionStatus, LiveSnapshot
 log = logging.getLogger(__name__)
 
 STRICTNESS_LABELS = {"strict": "Estricto", "moderate": "Moderado", "relaxed": "Relajado"}
-ROW_COLORS = {"loaded": "#a5d6a7", "next": "#fff176", "wildcard": "#ffb74d", "skipped": "#ef9a9a"}
-MODE_COLORS = {ConnectionMode.FULL: "#2e7d32", ConnectionMode.LIMITED: "#ef6c00",
-               ConnectionMode.DISCONNECTED: "#c62828"}
+ROW_COLORS = {k: bg for k, (bg, _fg) in theme.ROW_STYLES.items()}
+MODE_COLORS = {ConnectionMode.FULL: "#4caf50", ConnectionMode.LIMITED: "#ff9800",
+               ConnectionMode.DISCONNECTED: "#e53935"}
 
 
 class LiveBridge(QObject):
@@ -49,8 +50,8 @@ def _field_grid(parent_layout: QGridLayout, row0: int, names: list[str]) -> dict
     """Filas «Nombre: valor» alineadas. Devuelve las etiquetas de valor."""
     values = {}
     for i, name in enumerate(names):
-        k = QLabel(name + ":")
-        k.setStyleSheet("color: palette(mid); font-weight: normal;")
+        k = QLabel(name)
+        k.setProperty("role", "dim")
         v = QLabel("—")
         v.setTextInteractionFlags(Qt.TextSelectableByMouse)
         parent_layout.addWidget(k, row0 + i, 0, alignment=Qt.AlignTop)
@@ -69,6 +70,7 @@ class SuggestionPanel(QFrame):
         lay = QGridLayout(self)
         lay.setContentsMargins(10, 6, 10, 6)
         self.header = QLabel("Genera una sesión para empezar")
+        self.header.setObjectName("sugHeader")
         f = QFont()
         f.setPointSize(f.pointSize() + 2)
         f.setBold(True)
@@ -81,11 +83,15 @@ class SuggestionPanel(QFrame):
         for v in self.fields.values():
             v.setFont(big)
             v.setWordWrap(True)
-        self.set_color(ROW_COLORS["next"])
+        self.set_color("next")
 
     def set_color(self, color: str) -> None:
-        self.setStyleSheet(f"#suggestionPanel {{ background: {color}; border-radius: 4px; }}"
-                           " QLabel { color: #000; }")
+        """`color` es una clave de theme.ROW_STYLES o un color de fondo."""
+        bg, fg = theme.ROW_STYLES.get(color, (color, "#ffffff"))
+        self.setStyleSheet(f"#suggestionPanel {{ background: {theme.PANEL}; border: 1px solid {theme.BORDER};"
+                           f" border-left: 6px solid {fg}; border-radius: 3px; }}"
+                           f" QLabel {{ color: {theme.TEXT}; }}"
+                           f" QLabel#sugHeader {{ color: {fg}; }}")
 
     def show_message(self, text: str) -> None:
         self.header.setText(text)
@@ -103,29 +109,41 @@ class DeckWidget(QFrame):
     def __init__(self, deck: int):
         super().__init__()
         self.deck = deck
-        self.setFrameShape(QFrame.StyledPanel)
+        self.setObjectName("deckPanel")
         lay = QGridLayout(self)
-        lay.setContentsMargins(6, 4, 6, 4)
-        self.title = QLabel(f"Deck {deck}")
-        self.title.setStyleSheet("font-weight: bold;")
-        lay.addWidget(self.title, 0, 0, 1, 2)
-        self.fields = _field_grid(lay, 1, ["Tema", "BPM", "Clave"])
+        lay.setContentsMargins(8, 6, 8, 6)
+        head = QHBoxLayout()
+        num = QLabel(str(deck))
+        num.setProperty("role", "deckNum")
+        self.master = QLabel("MASTER")
+        self.master.setProperty("role", "master")
+        self.master.setVisible(False)
+        self.bpm = QLabel("—")
+        self.bpm.setProperty("role", "bpm")
+        head.addWidget(num)
+        head.addWidget(self.master)
+        head.addStretch(1)
+        head.addWidget(self.bpm)
+        lay.addLayout(head, 0, 0, 1, 2)
+        self.fields = _field_grid(lay, 1, ["Tema", "Clave"])
         self.fields["Tema"].setWordWrap(True)
         self.fields["Tema"].setMinimumWidth(120)
         self.fader = QProgressBar()
         self.fader.setRange(0, 100)
         self.fader.setTextVisible(False)
-        self.fader.setFixedHeight(8)
+        self.fader.setFixedHeight(6)
         self.fader.setToolTip("Fader de canal")
-        lay.addWidget(self.fader, 4, 0, 1, 2)
+        lay.addWidget(self.fader, 3, 0, 1, 2)
 
     def update_state(self, title: str, bpm: float | None, key: str, fader: float | None,
                      master: bool | None):
         self.fields["Tema"].setText(title)
-        self.fields["BPM"].setText(f"{bpm:.2f}" if bpm else "—")
+        self.bpm.setText(f"{bpm:.2f}" if bpm else "—")
         self.fields["Clave"].setText(key)
+        color = theme.camelot_color(key)
+        self.fields["Clave"].setStyleSheet(f"color: {color}; font-weight: bold;" if color else "")
         self.fader.setValue(int(round((fader or 0.0) * 100)))
-        self.title.setText(f"Deck {self.deck}" + ("  ● MASTER" if master else ""))
+        self.master.setVisible(bool(master))
 
 
 class MainWindow(QMainWindow):
@@ -201,6 +219,9 @@ class MainWindow(QMainWindow):
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["#", "Tema", "BPM", "Camelot"])
         self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+        self.table.verticalHeader().setDefaultSectionSize(22)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionMode(QAbstractItemView.NoSelection)
         hh = self.table.horizontalHeader()
@@ -214,7 +235,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self.table, 1)
         self.info_label = QLabel("")
         self.info_label.setWordWrap(True)
-        self.info_label.setStyleSheet("color: #ef6c00;")
+        self.info_label.setStyleSheet("color: #ff9800;")
         root.addWidget(self.info_label)
 
         # --- decks ----------------------------------------------------
@@ -308,18 +329,22 @@ class MainWindow(QMainWindow):
                 item.setForeground(QBrush())
                 # Verde = ya cargado (tachado) · amarillo = siguiente sugerencia (naranja si es
                 # comodín) · rojo = sugerencia que te saltaste (sigue disponible).
+                state = None
                 if struck:
                     font = item.font()
                     font.setStrikeOut(True)
                     item.setFont(font)
-                    item.setBackground(QBrush(QColor(ROW_COLORS["loaded"])))
-                    item.setForeground(QBrush(QColor("#1b5e20")))
+                    state = "loaded"
                 elif sug is not None and track.id == sug.track.id:
-                    item.setBackground(QBrush(QColor(ROW_COLORS["wildcard" if sug.is_wildcard else "next"])))
-                    item.setForeground(QBrush(QColor("#000000")))
+                    state = "wildcard" if sug.is_wildcard else "next"
                 elif s.is_skipped(track.id):
-                    item.setBackground(QBrush(QColor(ROW_COLORS["skipped"])))
-                    item.setForeground(QBrush(QColor("#000000")))
+                    state = "skipped"
+                if state:
+                    bg, fg = theme.ROW_STYLES[state]
+                    item.setBackground(QBrush(QColor(bg)))
+                    item.setForeground(QBrush(QColor(fg)))
+                elif col == 3 and theme.camelot_color(text):
+                    item.setForeground(QBrush(QColor(theme.camelot_color(text))))
                 if col in (0, 2, 3):
                     item.setTextAlignment(Qt.AlignCenter)
                 if rebuild:
@@ -333,12 +358,12 @@ class MainWindow(QMainWindow):
     def _refresh_suggestion(self) -> None:
         s = self.ctl.session
         if s is None:
-            self.suggestion.set_color(ROW_COLORS["next"])
+            self.suggestion.set_color("next")
             self.suggestion.show_message("Genera una sesión para empezar")
             return
         sug = s.suggestion
         if sug is None:
-            self.suggestion.set_color(ROW_COLORS["loaded"])
+            self.suggestion.set_color("loaded")
             self.suggestion.show_message("¡Sesión completada!")
             return
         t = sug.track
@@ -346,7 +371,7 @@ class MainWindow(QMainWindow):
         key = t.camelot_str
         if sug.from_anchor is not None and sug.from_anchor.key is not None:
             key += f"  ({sug.from_anchor.key.label_es})"
-        self.suggestion.set_color(ROW_COLORS["wildcard"] if sug.is_wildcard else ROW_COLORS["next"])
+        self.suggestion.set_color("wildcard" if sug.is_wildcard else "next")
         self.suggestion.show_track(header, t.display, f"{t.bpm:.1f}" if t.bpm else "—", key)
 
     def _row_clicked(self, row: int, _col: int) -> None:
@@ -423,13 +448,11 @@ class MainWindow(QMainWindow):
         if checked:
             self.ctl.start_recording()
             self._record_started = time.monotonic()
-            self.rec_button.setStyleSheet("background: #c62828; color: white;")
             self.statusBar().showMessage("Grabando sesión…", 3000)
         else:
             path = self.ctl.stop_recording()
             self._record_started = None
             self.rec_button.setText("● Iniciar grabación")
-            self.rec_button.setStyleSheet("")
             if path:
                 self.statusBar().showMessage(f"Sesión guardada en {path}", 10000)
 
@@ -451,6 +474,9 @@ class MainWindow(QMainWindow):
 
 def run_ui(cfg: AppConfig, library: InMemoryLibrary, controller: PracticeController | None = None) -> int:
     app = QApplication.instance() or QApplication([])
+    if cfg.ui.theme == "rekordbox":
+        app.setStyle("Fusion")
+        app.setStyleSheet(theme.QSS)
     ctl = controller or PracticeController(cfg, library)
     win = MainWindow(cfg, library, ctl)
     bridge = LiveBridge()

@@ -131,7 +131,8 @@ rkbx-practise-tool/
   },
   "ui": {
     "always_on_top": true,
-    "start_compact": false
+    "start_compact": false,
+    "theme": "rekordbox"
   },
   "lights": {
     "enabled": false,
@@ -156,7 +157,7 @@ Claves añadidas durante la implementación:
 - `detection.on_beat_tolerance_ms`: tolerancia para considerar un fader cut "a tiempo".
 - `detection.bass_swap_bar_tolerance_beats`: tolerancia (en beats) para considerar que un bass swap cae en inicio de compás/frase.
 - `detection.default_bpm`: BPM supuesto si un deck no informa BPM (para convertir beats a segundos).
-- `ui.always_on_top`, `ui.start_compact`.
+- `ui.always_on_top`, `ui.start_compact`, `ui.theme` (`rekordbox` o `system`).
 
 Los valores de umbral son puntos de partida; se ajustarán probando con el usuario.
 
@@ -266,7 +267,7 @@ Implementación:
 - Botón **Iniciar / Parar grabación** de sesión.
 - Ventana siempre visible encima de Rekordbox; que se pueda redimensionar y compactar.
 
-Implementación: `ui/main_window.py`. Colores de la lista (pedidos por el usuario): **verde** = cargado (y tachado), **amarillo** = siguiente sugerencia (naranja si es comodín), **rojo** = sugerencia que se saltó (cargó otro en su lugar; sigue disponible y pasa a verde si luego se carga). El bucle de sondeo corre en un hilo y pasa los datos a la UI con señales Qt; la sesión solo se modifica en el hilo de la UI. Ajustes rápidos en la ventana: tolerancia de BPM, Camelot sí/no y exigencia. `--demo` simula los decks para probar la ventana sin Rekordbox.
+Implementación: `ui/main_window.py`. Estilo oscuro inspirado en Rekordbox (`ui/theme.py`, `ui.theme: "rekordbox"`; `"system"` para el estilo normal de Windows): número de deck en azul, MASTER en naranja, BPM grande, claves coloreadas según la rueda Camelot; sugerencia y decks con campos Tema / BPM / Clave. Colores de la lista (pedidos por el usuario, en tonos oscuros): **verde** = cargado (y tachado), **amarillo** = siguiente sugerencia (naranja si es comodín), **rojo** = sugerencia que se saltó (cargó otro en su lugar; sigue disponible y pasa a verde si luego se carga). El bucle de sondeo corre en un hilo y pasa los datos a la UI con señales Qt; la sesión solo se modifica en el hilo de la UI. Ajustes rápidos en la ventana: tolerancia de BPM, Camelot sí/no y exigencia. `--demo` simula los decks para probar la ventana sin Rekordbox.
 
 ## 10. Histórico y detecciones
 

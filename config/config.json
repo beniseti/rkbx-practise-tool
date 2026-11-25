@@ -48,7 +48,8 @@
   },
   "ui": {
     "always_on_top": true,
-    "start_compact": false
+    "start_compact": false,
+    "theme": "rekordbox"
   },
   "lights": {
     "enabled": false,

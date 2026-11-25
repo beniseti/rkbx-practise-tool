@@ -87,6 +87,7 @@ class HistoryConfig:
 class UiConfig:
     always_on_top: bool = True
     start_compact: bool = False
+    theme: str = "rekordbox"   # "rekordbox" (oscuro) o "system"
 
 
 @dataclass
