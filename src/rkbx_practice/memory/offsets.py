@@ -145,8 +145,7 @@ class OffsetTable:
             for name in ("bpm", "position", "fader", "eq_low"):
                 if name not in f:
                     missing.append(f"deck {d}: {name}")
-            if "is_master" not in f and "master_deck" not in self.globals:
-                missing.append(f"deck {d}: is_master")
+            # is_master es opcional: sin él se usa el deck con el fader más alto.
         return missing
 
     @classmethod
