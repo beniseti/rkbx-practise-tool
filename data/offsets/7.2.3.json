@@ -22,7 +22,7 @@
           0.0,
           1.0
         ],
-        "_note": "Variable global dentro de rekordbox.exe (posición lineal 0..1). Hallada con offset_detect; pendiente de confirmar tras reinicio."
+        "_note": "Variable global dentro de rekordbox.exe (posición lineal 0..1). Confirmado estable tras reiniciar Rekordbox."
       }
     }
   },
