@@ -128,3 +128,13 @@ def test_display_order_is_stable(session_cfg):
     after = s.entries()
     assert [t.id for t, _ in after] == shown    # la lista visible no se reordena
     assert dict((t.id, struck) for t, struck in after)[shown[-1]] is True
+
+
+def test_skipped_suggestion_is_marked(session_cfg):
+    s, _ = make_session(session_cfg)
+    sug = s.suggestion.track
+    other = next(t for t in s.plan if t.id != sug.id)
+    s.track_loaded(other, deck=1)
+    assert s.is_skipped(sug.id)
+    s.track_loaded(sug, deck=2)                 # si luego se carga, deja de estar saltado
+    assert not s.is_skipped(sug.id) and s.is_struck(sug.id)

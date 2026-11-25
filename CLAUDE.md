@@ -257,7 +257,7 @@ Implementación:
 - Botón **Iniciar / Parar grabación** de sesión.
 - Ventana siempre visible encima de Rekordbox; que se pueda redimensionar y compactar.
 
-Implementación: `ui/main_window.py`. El bucle de sondeo corre en un hilo y pasa los datos a la UI con señales Qt; la sesión solo se modifica en el hilo de la UI. Ajustes rápidos en la ventana: tolerancia de BPM, Camelot sí/no y exigencia. `--demo` simula los decks para probar la ventana sin Rekordbox.
+Implementación: `ui/main_window.py`. Colores de la lista (pedidos por el usuario): **verde** = cargado (y tachado), **amarillo** = siguiente sugerencia (naranja si es comodín), **rojo** = sugerencia que se saltó (cargó otro en su lugar; sigue disponible y pasa a verde si luego se carga). El bucle de sondeo corre en un hilo y pasa los datos a la UI con señales Qt; la sesión solo se modifica en el hilo de la UI. Ajustes rápidos en la ventana: tolerancia de BPM, Camelot sí/no y exigencia. `--demo` simula los decks para probar la ventana sin Rekordbox.
 
 ## 10. Histórico y detecciones
 

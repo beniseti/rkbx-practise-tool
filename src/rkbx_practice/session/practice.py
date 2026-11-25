@@ -50,6 +50,7 @@ class PracticeSession:
         # las próximas sugerencias); así la lista no "salta" y el tachado se ve en su sitio.
         self.display_order: list[Track] = list(self.plan)
         self.struck: dict[str, StrikeInfo] = {}
+        self.skipped: set[str] = set()      # sugeridos que el usuario se saltó (cargó otro)
         self.load_order: list[str] = []      # temas de la sesión cargados, en orden
         self.anchor: Track | None = None     # último tema cargado (de la sesión o no)
         self._suggestion: Suggestion | None = None
@@ -76,6 +77,9 @@ class PracticeSession:
     def remaining(self) -> list[Track]:
         return [t for t in self.plan if t.id not in self.struck]
 
+    def is_skipped(self, track_id: str) -> bool:
+        return track_id in self.skipped and track_id not in self.struck
+
     def entries(self) -> list[tuple[Track, bool]]:
         """Lista para la UI: (tema, tachado) en el orden original de la sesión (no cambia)."""
         with self._lock:
@@ -90,6 +94,9 @@ class PracticeSession:
             in_session = track.id in self._by_id
             sug = self._suggestion
             followed_plan = (sug is not None and not sug.is_wildcard and sug.track.id == track.id)
+            if sug is not None and sug.track.id != track.id and sug.track.id not in self.struck:
+                self.skipped.add(sug.track.id)
+            self.skipped.discard(track.id)
             if in_session and track.id not in self.struck:
                 self.struck[track.id] = StrikeInfo(deck, at)
                 self.load_order.append(track.id)

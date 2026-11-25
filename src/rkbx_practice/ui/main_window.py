@@ -23,6 +23,7 @@ from ..state import ConnectionMode, ConnectionStatus, LiveSnapshot
 log = logging.getLogger(__name__)
 
 STRICTNESS_LABELS = {"strict": "Estricto", "moderate": "Moderado", "relaxed": "Relajado"}
+ROW_COLORS = {"loaded": "#a5d6a7", "next": "#fff176", "wildcard": "#ffb74d", "skipped": "#ef9a9a"}
 MODE_COLORS = {ConnectionMode.FULL: "#2e7d32", ConnectionMode.LIMITED: "#ef6c00",
                ConnectionMode.DISCONNECTED: "#c62828"}
 
@@ -159,7 +160,8 @@ class MainWindow(QMainWindow):
         hh.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.table.cellClicked.connect(self._row_clicked)
-        self.table.setToolTip("Clic en un tema tachado para destacharlo")
+        self.table.setToolTip("Verde: cargado (clic para destachar) · Amarillo: siguiente · "
+                              "Naranja: comodín · Rojo: te lo saltaste")
         root.addWidget(self.table, 1)
         self.info_label = QLabel("")
         self.info_label.setWordWrap(True)
@@ -231,13 +233,19 @@ class MainWindow(QMainWindow):
             for col, text in enumerate(cells):
                 item = QTableWidgetItem(text)
                 item.setData(Qt.UserRole, track.id)
+                # Verde = ya cargado (tachado) · amarillo = siguiente sugerencia (naranja si es
+                # comodín) · rojo = sugerencia que te saltaste (sigue disponible).
                 if struck:
                     font = item.font()
                     font.setStrikeOut(True)
                     item.setFont(font)
-                    item.setForeground(QBrush(QColor("#9e9e9e")))
+                    item.setBackground(QBrush(QColor(ROW_COLORS["loaded"])))
+                    item.setForeground(QBrush(QColor("#1b5e20")))
                 elif sug is not None and track.id == sug.track.id:
-                    item.setBackground(QBrush(QColor("#ffe082" if sug.is_wildcard else "#c8e6c9")))
+                    item.setBackground(QBrush(QColor(ROW_COLORS["wildcard" if sug.is_wildcard else "next"])))
+                    item.setForeground(QBrush(QColor("#000000")))
+                elif s.is_skipped(track.id):
+                    item.setBackground(QBrush(QColor(ROW_COLORS["skipped"])))
                     item.setForeground(QBrush(QColor("#000000")))
                 if col in (0, 2, 3):
                     item.setTextAlignment(Qt.AlignCenter)
@@ -263,8 +271,8 @@ class MainWindow(QMainWindow):
         if sug.from_anchor is not None and sug.from_anchor.key is not None:
             rel = f" · {sug.from_anchor.key.label_es}"
         self.suggestion.setText(f"{tag}{t.display}\n{t.bpm:.1f} BPM · {t.camelot_str}{rel}")
-        color = "#f9a825" if sug.is_wildcard else "#263238"
-        fg = "#000" if sug.is_wildcard else "#fff"
+        color = ROW_COLORS["wildcard"] if sug.is_wildcard else ROW_COLORS["next"]
+        fg = "#000"
         self.suggestion.setStyleSheet(f"padding: 6px; border-radius: 4px; background: {color}; color: {fg};")
 
     def _row_clicked(self, row: int, _col: int) -> None:
