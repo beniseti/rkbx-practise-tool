@@ -547,7 +547,14 @@ class MainWindow(QMainWindow):
         if not tracks:
             QMessageBox.information(self, "Luces", "Carga un tema en un deck o genera una sesión primero.")
             return
-        LightsEditor(self.ctl, tracks, self).exec()
+        def positions():
+            snap = self._last_snapshot
+            if snap is None:
+                return {}
+            return {d.track_id: d.position_s for d in snap.decks
+                    if d.track_id and d.position_s is not None}
+
+        LightsEditor(self.ctl, tracks, self, position_provider=positions).exec()
 
     def _show_history(self) -> None:
         HistoryDialog(self.cfg, self).exec()

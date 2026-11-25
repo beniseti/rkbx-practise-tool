@@ -334,7 +334,7 @@ Implementación (`src/rkbx_practice/lights/`):
 - `udp.py`: JSON por UDP no bloqueante a `esp32_ip:esp32_port`; los errores de red se registran y no paran nada.
 - `manager.py`: caché de archivos para el bucle en vivo (nunca lee el disco en el bucle); si un tema no tiene archivo, se genera en segundo plano la primera vez que suena.
 - Catálogo de efectos y parámetros por defecto en `lights.effects`; reglas en `lights.rules` (ambos en config.json).
-- Ventana: casilla **Luces** (activar en directo) y botón **Efectos…** (editor por tema: compás, tiempo, sección, efecto, parámetros, Probar, Añadir/Quitar, Regenerar, Guardar).
+- Ventana: casilla **Luces** (activar en directo) y botón **Efectos…** (editor por tema: compás, tiempo, sección, efecto, parámetros, Probar, Añadir/Quitar, Regenerar, Guardar). Encima de la tabla, **línea de tiempo** (pedida por el usuario): frases en bandas de colores, curva de energía de graves, drops/breaks en línea discontinua, eventos como triángulos y cursor de reproducción naranja si el tema está sonando; clic = seleccionar evento (o preparar el compás para añadir), tooltip con compás/tiempo/sección.
 - CLI: `lights show <tema> [--regenerate]`, `lights send <fx> color=rojo dur_ms=200`.
 
 ## 12. Fases de desarrollo
