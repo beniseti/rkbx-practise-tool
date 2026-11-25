@@ -20,7 +20,25 @@ Dependencias: `pyrekordbox` (master.db y ANLZ), `pymem` (lectura de memoria,
 solo Windows), `PySide6` (ventana). `numpy` solo para la herramienta de
 offsets (ya lo instala pyrekordbox). `pytest` para los tests.
 
-## Uso
+## Uso diario (Rekordbox 7.2.3 con controladora)
+
+```powershell
+cd C:\Users\Casa\Desktop\rkbx-practise-tool
+.venv\Scripts\activate
+git pull
+python -m rkbx_practice ui
+```
+
+1. Abre Rekordbox y conecta la controladora (los faders se leen de la controladora).
+2. En la ventana elige la playlist y pulsa **Generar sesión**. Si ya hay un tema
+   sonando, la sesión empieza desde él.
+3. Carga los temas en los decks: se ponen en **verde** (tachados), la siguiente
+   sugerencia en **amarillo** (naranja si es comodín) y las sugerencias que te
+   saltas en **rojo**. Clic en un tema verde para destacharlo.
+4. **● Iniciar grabación** / **■ Parar grabación** para guardar la sesión y
+   **Histórico** para revisarla (transiciones, fader cuts a tiempo, bass swaps).
+
+## Comandos
 
 ```powershell
 # Biblioteca (master.db en solo lectura; se abre una copia temporal)

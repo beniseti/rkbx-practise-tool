@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import bisect
 import logging
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -117,6 +118,7 @@ class BeatGridCache:
         self._share_dir = share_dir
         self._reader = reader
         self._cache: dict[str, BeatGrid | None] = {}
+        self._loading: set[str] = set()
 
     def _resolve(self, anlz_path: str) -> Path:
         p = Path(anlz_path.replace("\\", "/"))
@@ -125,8 +127,36 @@ class BeatGridCache:
         return p
 
     def get(self, anlz_path: str | None) -> BeatGrid | None:
+        """Lectura bloqueante (lee del disco si no está en caché)."""
         if not anlz_path:
             return None
         if anlz_path not in self._cache:
             self._cache[anlz_path] = self._reader(self._resolve(anlz_path))
         return self._cache[anlz_path]
+
+    def get_nowait(self, anlz_path: str | None) -> BeatGrid | None:
+        """Sin bloquear: si aún no está leída, lanza la lectura en segundo plano y devuelve None.
+        Es la que usa el bucle en vivo (no puede pararse a leer el disco)."""
+        if not anlz_path:
+            return None
+        if anlz_path in self._cache:
+            return self._cache[anlz_path]
+        self.prefetch(anlz_path)
+        return None
+
+    def prefetch(self, anlz_path: str | None) -> None:
+        """Lee la rejilla en un hilo aparte (se llama al cargar un tema)."""
+        if not anlz_path or anlz_path in self._cache or anlz_path in self._loading:
+            return
+        self._loading.add(anlz_path)
+
+        def work() -> None:
+            try:
+                self._cache[anlz_path] = self._reader(self._resolve(anlz_path))
+            except Exception as exc:  # noqa: BLE001
+                log.warning("No se pudo leer la rejilla de %s: %s", anlz_path, exc)
+                self._cache[anlz_path] = None
+            finally:
+                self._loading.discard(anlz_path)
+
+        threading.Thread(target=work, name="beatgrid-prefetch", daemon=True).start()

@@ -180,8 +180,18 @@ def summarize(data: dict) -> str:
     rated = sum(1 for b in cuts for c in b["cuts"] if c.get("on_beat") is not None)
     lines.append(f"Fader cuts: {len(cuts)} ráfagas, {total} cortes"
                  + (f", {on_beat}/{rated} a tiempo" if rated else ""))
+    for b in cuts:
+        marks = "".join({True: "✓", False: "✗", None: "·"}[c.get("on_beat")] for c in b["cuts"])
+        offs = [c["beat_offset_ms"] for c in b["cuts"] if c.get("beat_offset_ms") is not None]
+        avg = f"  desfase medio {sum(abs(o) for o in offs) / len(offs):.0f} ms" if offs else ""
+        lines.append(f"  {b['at'][11:19]}  deck {b['deck']}  {b['count']} cortes  {marks}{avg}")
     swaps = data.get("bass_swaps", [])
     on_bar = sum(1 for s in swaps if s.get("on_bar"))
     on_phrase = sum(1 for s in swaps if s.get("on_phrase"))
     lines.append(f"Bass swaps: {len(swaps)} ({on_bar} en compás, {on_phrase} en frase)")
+    yn = {True: "sí", False: "no", None: "?"}
+    for sw in swaps:
+        lines.append(f"  {sw['at'][11:19]}  {sw['from_deck']}→{sw['to_deck']}  "
+                     f"separación {sw['gap_beats']:.1f} beats  compás: {yn[sw.get('on_bar')]}  "
+                     f"frase: {yn[sw.get('on_phrase')]}")
     return "\n".join(lines)

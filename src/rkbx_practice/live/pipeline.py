@@ -15,9 +15,11 @@ GridLookup = Callable[[str | None], BeatGrid | None]
 
 
 class LivePipeline:
-    def __init__(self, cfg: AppConfig, grids: GridLookup | None = None):
+    def __init__(self, cfg: AppConfig, grids: GridLookup | None = None,
+                 prefetch: Callable[[str | None], None] | None = None):
         self.cfg = cfg
         self.grids = grids
+        self.prefetch = prefetch
         self.reset()
 
     def reset(self) -> None:
@@ -51,6 +53,8 @@ class LivePipeline:
                 if snap.t - pend[1] >= debounce:
                     events.append(TrackLoaded(deck=d.deck, track_id=d.track_id,
                                               track_path=d.track_path, at=pend[2], t=pend[1]))
+                    if self.prefetch is not None:
+                        self.prefetch(d.track_path)
                     self._loaded[d.deck] = key
                     del self._pending[d.deck]
         frame = build_frame(snap, self.cfg.mixer)

@@ -8,9 +8,10 @@ import time
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFont
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog,
                                QDoubleSpinBox, QFrame, QGridLayout, QHBoxLayout, QHeaderView,
-                               QLabel, QMainWindow, QMessageBox, QProgressBar, QPushButton,
+                               QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
+                               QPlainTextEdit, QProgressBar, QPushButton, QSplitter,
                                QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from . import theme
@@ -146,6 +147,53 @@ class DeckWidget(QFrame):
         self.master.setVisible(bool(master))
 
 
+class HistoryDialog(QDialog):
+    """Sesiones grabadas: lista a la izquierda, resumen a la derecha."""
+
+    def __init__(self, cfg: AppConfig, parent=None):
+        super().__init__(parent)
+        from ..history import list_sessions, load_session, summarize
+        self._load, self._summarize = load_session, summarize
+        self.setWindowTitle("Histórico de sesiones")
+        self.resize(820, 520)
+        lay = QVBoxLayout(self)
+        split = QSplitter(Qt.Horizontal)
+        self.list = QListWidget()
+        self.text = QPlainTextEdit()
+        self.text.setReadOnly(True)
+        mono = QFont("Consolas")
+        mono.setStyleHint(QFont.Monospace)
+        self.text.setFont(mono)
+        split.addWidget(self.list)
+        split.addWidget(self.text)
+        split.setSizes([260, 560])
+        lay.addWidget(split)
+        for path in list_sessions(cfg.resolve_path(cfg.history.dir)):
+            try:
+                data = load_session(path)
+                label = (f"{data.get('started_at', '')[:16].replace('T', ' ')}  ·  "
+                         f"{data.get('source') or '—'}  ·  {len(data.get('transitions', []))} trans.")
+            except Exception:  # noqa: BLE001
+                label = f"{path.name} (ilegible)"
+            item = QListWidgetItem(label)
+            item.setData(Qt.UserRole, str(path))
+            self.list.addItem(item)
+        self.list.currentItemChanged.connect(self._select)
+        if self.list.count():
+            self.list.setCurrentRow(0)
+        else:
+            self.text.setPlainText("Todavía no hay sesiones grabadas.\n\n"
+                                   "Pulsa «Iniciar grabación» en la ventana principal para grabar una.")
+
+    def _select(self, item, _prev=None) -> None:
+        if item is None:
+            return
+        try:
+            self.text.setPlainText(self._summarize(self._load(item.data(Qt.UserRole))))
+        except Exception as exc:  # noqa: BLE001
+            self.text.setPlainText(f"No se pudo leer la sesión: {exc}")
+
+
 class MainWindow(QMainWindow):
     def __init__(self, cfg: AppConfig, library: InMemoryLibrary, controller: PracticeController):
         super().__init__()
@@ -176,7 +224,10 @@ class MainWindow(QMainWindow):
         self.compact_button = QPushButton("Compactar")
         self.compact_button.clicked.connect(self._toggle_compact)
         head.addWidget(self.conn_label, 1)
+        self.history_button = QPushButton("Histórico")
+        self.history_button.clicked.connect(self._show_history)
         head.addWidget(self.rec_button)
+        head.addWidget(self.history_button)
         head.addWidget(self.compact_button)
         root.addLayout(head)
 
@@ -463,6 +514,9 @@ class MainWindow(QMainWindow):
         self.compact_button.setText("Ampliar" if self._compact else "Compactar")
         if self._compact:
             self.resize(self.width(), self.minimumSizeHint().height())
+
+    def _show_history(self) -> None:
+        HistoryDialog(self.cfg, self).exec()
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt)
         if self.ctl.recorder.recording:

@@ -176,7 +176,7 @@ Implementación:
 - Campos usados de `DjmdContent`: `ID`, `Title`, `ArtistName`, `FolderPath`, `BPM`, `KeyName`, `Length`, `AnalysisDataPath`. Playlists: `DjmdPlaylist.Attribute` (0 playlist, 1 carpeta, 4 inteligente), `ParentID`, `Seq`; contenido con `get_playlist_contents` (si existe) o `Songs` ordenado por `TrackNo`.
 - BPM: un valor ≥ 1000 se interpreta como ×100.
 - Cruce memoria ↔ master.db por ruta ANLZ: clave normalizada desde `pioneer/usbanlz/` hasta la carpeta del tema, en minúsculas y sin extensión (`.DAT`/`.EXT`/`.2EX`), así coinciden la ruta absoluta de memoria y la relativa de master.db.
-- Rejilla (`PQTZ`) y frases (`PSSI`) con `pyrekordbox.anlz`; modelo `BeatGrid` con caché por ruta.
+- Rejilla (`PQTZ`) y frases (`PSSI`) con `pyrekordbox.anlz`; modelo `BeatGrid` con caché por ruta; se lee en segundo plano al cargar cada tema (el bucle en vivo usa `get_nowait` y nunca espera al disco).
 
 ### Tabla Camelot
 
@@ -267,7 +267,7 @@ Implementación:
 - Botón **Iniciar / Parar grabación** de sesión.
 - Ventana siempre visible encima de Rekordbox; que se pueda redimensionar y compactar.
 
-Implementación: `ui/main_window.py`. Estilo oscuro inspirado en Rekordbox (`ui/theme.py`, `ui.theme: "rekordbox"`; `"system"` para el estilo normal de Windows): número de deck en azul, MASTER en naranja, BPM grande, claves coloreadas según la rueda Camelot; sugerencia y decks con campos Tema / BPM / Clave. Colores de la lista (pedidos por el usuario, en tonos oscuros): **verde** = cargado (y tachado), **amarillo** = siguiente sugerencia (naranja si es comodín), **rojo** = sugerencia que se saltó (cargó otro en su lugar; sigue disponible y pasa a verde si luego se carga). El bucle de sondeo corre en un hilo y pasa los datos a la UI con señales Qt; la sesión solo se modifica en el hilo de la UI. Ajustes rápidos en la ventana: tolerancia de BPM, Camelot sí/no y exigencia. `--demo` simula los decks para probar la ventana sin Rekordbox.
+Implementación: `ui/main_window.py`. Estilo oscuro inspirado en Rekordbox (`ui/theme.py`, `ui.theme: "rekordbox"`; `"system"` para el estilo normal de Windows): número de deck en azul, MASTER en naranja, BPM grande, claves coloreadas según la rueda Camelot; sugerencia y decks con campos Tema / BPM / Clave. Colores de la lista (pedidos por el usuario, en tonos oscuros): **verde** = cargado (y tachado), **amarillo** = siguiente sugerencia (naranja si es comodín), **rojo** = sugerencia que se saltó (cargó otro en su lugar; sigue disponible y pasa a verde si luego se carga). El bucle de sondeo corre en un hilo y pasa los datos a la UI con señales Qt; la sesión solo se modifica en el hilo de la UI. Ajustes rápidos en la ventana: tolerancia de BPM, Camelot sí/no y exigencia. `--demo` simula los decks para probar la ventana sin Rekordbox. Botón **Histórico**: lista las sesiones grabadas y muestra el resumen (transiciones, cada ráfaga de cortes con ✓/✗ por corte y desfase medio, cada bass swap con compás/frase).
 
 ## 10. Histórico y detecciones
 

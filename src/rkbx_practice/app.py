@@ -128,7 +128,7 @@ class PracticeController:
 
         enricher = SnapshotEnricher(self.library, self.cfg.live.position_jump_tolerance_s,
                                     empty_without_bpm=self.cfg.live.empty_deck_without_bpm)
-        pipeline = LivePipeline(self.cfg, grids=self.grids.get)
+        pipeline = LivePipeline(self.cfg, grids=self.grids.get_nowait, prefetch=self.grids.prefetch)
         self.poller = LivePoller(self.cfg, self.source_factory, enricher, pipeline, _Tee())
         self.poller.start()
         return self.poller

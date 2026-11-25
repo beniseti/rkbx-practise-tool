@@ -64,3 +64,25 @@ def test_beat_grid():
     assert g.is_phrase_start(0.1, 0.03)
     assert g.is_phrase_start(0.1 + 32 * 0.5, 0.03)
     assert not g.is_phrase_start(2.1, 0.03)
+
+
+def test_beat_grid_cache_prefetch_does_not_block():
+    import threading
+    import time as _t
+    from rkbx_practice.library.anlz import BeatGridCache
+    gate = threading.Event()
+
+    def slow_reader(path):
+        gate.wait(2)
+        return BeatGrid.uniform(120.0)
+
+    cache = BeatGridCache(reader=slow_reader)
+    t0 = _t.monotonic()
+    assert cache.get_nowait("/PIONEER/USBANLZ/a/b/ANLZ0000.DAT") is None   # no espera al disco
+    assert _t.monotonic() - t0 < 0.5
+    gate.set()
+    for _ in range(100):
+        if cache.get_nowait("/PIONEER/USBANLZ/a/b/ANLZ0000.DAT") is not None:
+            break
+        _t.sleep(0.01)
+    assert cache.get_nowait("/PIONEER/USBANLZ/a/b/ANLZ0000.DAT") is not None
