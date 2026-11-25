@@ -34,6 +34,16 @@
           1.0
         ],
         "_note": "Global en rekordbox.exe (0 = mínimo, 0.5 = centro, 1 = máximo). Tabla EQ: por deck HI, MID, LOW (f64), 0x18 bytes por deck."
+      },
+      "track_path": {
+        "chain": [
+          "0x59ff0a8",
+          "0x8",
+          "0x3f0"
+        ],
+        "type": "ptr_utf8",
+        "max_len": 512,
+        "_note": "Lista de decks: deck N en 0x8*N. Hallada con el paso 'vuelve a cargar el primer tema'."
       }
     },
     "2": {
