@@ -120,8 +120,8 @@
       "intro": {
         "fx": "wave",
         "params": {
-          "color": "azul",
-          "color2": "morado",
+          "color": "$primary",
+          "color2": "$secondary",
           "bpm": "live",
           "beats": 4
         }
@@ -129,24 +129,60 @@
       "groove": {
         "fx": "alternate",
         "params": {
-          "color": "morado",
-          "color2": "azul",
+          "color": "$primary",
+          "color2": "$secondary",
           "bpm": "live"
         }
       },
-      "peak": {
-        "fx": "chase",
+      "peak_soft": {
+        "fx": "pulse",
         "params": {
-          "color": "naranja",
-          "bpm": "live",
-          "beats": 1
+          "color": "$secondary",
+          "bpm": "live"
         }
       },
+      "peak_medium": [
+        {
+          "fx": "alternate",
+          "params": {
+            "color": "$secondary",
+            "color2": "$accent",
+            "bpm": "live"
+          }
+        },
+        {
+          "fx": "wave",
+          "params": {
+            "color": "$secondary",
+            "color2": "$primary",
+            "bpm": "live",
+            "beats": 2
+          }
+        }
+      ],
+      "peak_hard": [
+        {
+          "fx": "chase",
+          "params": {
+            "color": "$secondary",
+            "bpm": "live",
+            "beats": 1
+          }
+        },
+        {
+          "fx": "alternate",
+          "params": {
+            "color": "$accent",
+            "color2": "$secondary",
+            "bpm": "live"
+          }
+        }
+      ],
       "breakdown": {
         "fx": "twinkle",
         "params": {
-          "color": "azul",
-          "color2": "morado",
+          "color": "$secondary",
+          "color2": "$primary",
           "density": 0.15,
           "bpm": "live"
         }
@@ -174,19 +210,74 @@
         "fx": null,
         "params": {}
       },
-      "drop": {
-        "fx": "chase",
-        "params": {
-          "color": "rojo",
-          "bpm": "live",
-          "beats": 0.5
+      "drop_soft": [
+        {
+          "fx": "pulse",
+          "params": {
+            "color": "$primary",
+            "bpm": "live"
+          }
+        },
+        {
+          "fx": "wave",
+          "params": {
+            "color": "$primary",
+            "color2": "$accent",
+            "bpm": "live",
+            "beats": 2
+          }
         }
-      },
+      ],
+      "drop_medium": [
+        {
+          "fx": "alternate",
+          "params": {
+            "color": "$primary",
+            "color2": "$accent",
+            "bpm": "live"
+          }
+        },
+        {
+          "fx": "chase",
+          "params": {
+            "color": "$primary",
+            "bpm": "live",
+            "beats": 1
+          }
+        }
+      ],
+      "drop_hard": [
+        {
+          "fx": "chase",
+          "params": {
+            "color": "$accent",
+            "bpm": "live",
+            "beats": 0.5
+          }
+        },
+        {
+          "fx": "alternate",
+          "params": {
+            "color": "$accent",
+            "color2": "$primary",
+            "bpm": "live"
+          }
+        },
+        {
+          "fx": "wave",
+          "params": {
+            "color": "$accent",
+            "color2": "$primary",
+            "bpm": "live",
+            "beats": 1
+          }
+        }
+      ],
       "outro": {
         "fx": "wave",
         "params": {
-          "color": "azul",
-          "color2": "morado",
+          "color": "$primary",
+          "color2": "$secondary",
           "bpm": "live",
           "beats": 8
         }
@@ -200,8 +291,8 @@
     "fallback": {
       "fx": "wave",
       "params": {
-        "color": "azul",
-        "color2": "morado",
+        "color": "$primary",
+        "color2": "$secondary",
         "bpm": "live",
         "beats": 4
       }

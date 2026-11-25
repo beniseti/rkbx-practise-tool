@@ -455,3 +455,79 @@ class LightsEditor(QDialog):
         self.show.events = self._collect()
         path = self.mgr.save(self.show)
         self.info.setText(f"Guardado en {path}")
+
+
+class LatencyDialog(QDialog):
+    """Calibración de la latencia de las luces a oído/vista: metrónomo + ajuste en vivo."""
+
+    def __init__(self, controller, parent=None):
+        super().__init__(parent)
+        from PySide6.QtWidgets import QCheckBox
+        self.ctl = controller
+        self.engine = controller.lights.engine
+        self.cfg = controller.cfg
+        self.setWindowTitle("Calibrar latencia de las luces")
+        lay = QVBoxLayout(self)
+        help_ = QLabel(
+            "1. Pon un tema con bombo claro a sonar (fader arriba) y marca «Metrónomo».\n"
+            "2. Las luces darán un destello en cada beat. Mira las luces reales (ESP32) mientras escuchas.\n"
+            "3. Si el destello llega DESPUÉS del bombo, sube la latencia; si llega ANTES, bájala.\n"
+            "4. Guarda cuando coincidan.")
+        help_.setWordWrap(True)
+        lay.addWidget(help_)
+        self.metro = QCheckBox("Metrónomo (destello en cada beat; silencia los efectos del tema)")
+        self.metro.setChecked(self.engine.metronome)
+        self.metro.toggled.connect(self._toggle)
+        lay.addWidget(self.metro)
+        row = QHBoxLayout()
+        self.spin = QSpinBox()
+        self.spin.setRange(-500, 1000)
+        self.spin.setSingleStep(5)
+        self.spin.setSuffix(" ms")
+        self.spin.setValue(int(self.cfg.lights.latency_compensation_ms))
+        self.spin.valueChanged.connect(self._changed)
+        for delta in (-20, -5):
+            b = QPushButton(f"{delta}")
+            b.clicked.connect(lambda _=False, d=delta: self.spin.setValue(self.spin.value() + d))
+            row.addWidget(b)
+        row.addWidget(QLabel("Adelanto:"))
+        row.addWidget(self.spin)
+        for delta in (5, 20):
+            b = QPushButton(f"+{delta}")
+            b.clicked.connect(lambda _=False, d=delta: self.spin.setValue(self.spin.value() + d))
+            row.addWidget(b)
+        lay.addLayout(row)
+        self.status = QLabel("")
+        self.status.setProperty("role", "dim")
+        self.status.setWordWrap(True)
+        lay.addWidget(self.status)
+        buttons = QHBoxLayout()
+        save = QPushButton("Guardar en config.json")
+        save.clicked.connect(self._save)
+        close = QPushButton("Cerrar")
+        close.clicked.connect(self.accept)
+        buttons.addStretch(1)
+        buttons.addWidget(save)
+        buttons.addWidget(close)
+        lay.addLayout(buttons)
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(lambda: self.status.setText(self.engine.status))
+        self._timer.start(200)
+
+    def _toggle(self, on: bool) -> None:
+        self.engine.metronome = on
+        if on:
+            self.ctl.set_lights_enabled(True)
+
+    def _changed(self, value: int) -> None:
+        self.cfg.lights.latency_compensation_ms = int(value)   # se aplica en vivo
+
+    def _save(self) -> None:
+        from ..config import DEFAULT_CONFIG_PATH, save_value
+        path = self.cfg.source_path or DEFAULT_CONFIG_PATH
+        save_value(path, ["lights", "latency_compensation_ms"], int(self.spin.value()))
+        self.status.setText(f"Guardado: {self.spin.value()} ms en {path}")
+
+    def done(self, r: int) -> None:  # noqa: D401  (al cerrar, apagar el metrónomo)
+        self.engine.metronome = False
+        super().done(r)

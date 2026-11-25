@@ -30,6 +30,9 @@ log = logging.getLogger(__name__)
 # Efectos de fondo (se pueden reenviar al engancharse a mitad de una sección); el resto son
 # temporales (flash, strobe, build, rainbow…) y no se repiten a destiempo.
 BACKGROUND_FX = {"color", "off", "pulse", "breathe", "alternate", "chase", "wave", "twinkle"}
+# Efectos que siguen el beat en el ESP32: se les manda la fase (`phase`, 0..1 dentro del beat en el
+# momento en que se aplican) y cada compás un `sync` con el BPM y la fase reales.
+BEAT_FX = {"pulse", "alternate", "chase", "wave", "twinkle"}
 
 ShowLookup = Callable[[str | None], LightShow | None]
 GridLookup = Callable[[str | None], BeatGrid | None]
@@ -39,8 +42,20 @@ Sender = Callable[[LightCommand], object]
 class LightsEngine:
     def __init__(self, cfg: LightsConfig, mixer: MixerConfig, detection: DetectionConfig,
                  shows: ShowLookup, grids: GridLookup, send: Sender,
-                 track_bpm: Callable[[str | None], float | None] | None = None):
+                 track_bpm: Callable[[str | None], float | None] | None = None,
+                 track_palette: Callable[[str | None], dict | None] | None = None,
+                 schedule: Callable[[float, Callable[[], object]], object] | None = None,
+                 poll_s: float = 0.02):
+        """`schedule(delay_s, fn)`: si se da, los eventos que caen entre dos sondeos se envían
+        en su momento exacto (si no, se envían en el sondeo en que se cruzan)."""
         self.cfg = cfg
+        self.track_palette = track_palette or (lambda _tid: None)
+        self.schedule = schedule
+        self.poll_s = poll_s
+        self._grid: BeatGrid | None = None
+        self._next = 0                          # siguiente evento por enviar
+        self._next_beat = 0                     # siguiente beat de la rejilla (sync / metrónomo)
+        self.metronome = False                  # calibración: un destello en cada beat
         self.mixer = mixer
         self.shows = shows
         self.grids = grids
@@ -62,6 +77,7 @@ class LightsEngine:
         """Carga eventos y tiempos. Devuelve el motivo si no hay nada que disparar."""
         show = self.shows(track_id)
         grid = self.grids(track_path)
+        self._grid = grid
         self._events, self._times = [], []
         if show is None:
             return "no_show"
@@ -77,18 +93,47 @@ class LightsEngine:
     def _set_status(self, text: str) -> None:
         self.status = text
 
+    # --- construcción y envío de comandos ----------------------------------
+    def _phase_at(self, pos: float) -> float | None:
+        g = self._grid
+        if g is None or len(g.times) < 2:
+            return None
+        j = bisect.bisect_right(g.times, pos) - 1
+        if j < 0 or j + 1 >= len(g.times):
+            return None
+        span = g.times[j + 1] - g.times[j]
+        return round((pos - g.times[j]) / span, 3) if span > 0 else 0.0
+
+    def _make(self, fx: str, params: dict, bpm: float | None, pos: float | None,
+              track_id: str | None = None) -> LightCommand:
+        from .palette import apply_palette
+        p = resolve_live(apply_palette(dict(params), self.track_palette(track_id)), bpm)
+        if fx in BEAT_FX and pos is not None and "phase" not in p:
+            ph = self._phase_at(pos)
+            if ph is not None:
+                p["phase"] = ph
+        return LightCommand(fx, p)
+
+    def _dispatch(self, cmd: LightCommand, delay_s: float = 0.0) -> None:
+        if self.schedule is not None and delay_s > 0.002:
+            self.schedule(delay_s, lambda c=cmd: self.send(c))
+        else:
+            self.send(cmd)
+
     # --- efectos básicos -------------------------------------------------
-    def _send_rule(self, mode: tuple, rule: dict, label: str, t: float, bpm: float | None) -> None:
+    def _send_rule(self, mode: tuple, rule: dict, label: str, t: float, bpm: float | None,
+                   pos: float | None = None, track_id: str | None = None) -> None:
         """Envía `rule` una sola vez por situación `mode` (no en cada sondeo)."""
         if self._mode == mode or not rule or not rule.get("fx"):
             self._mode = mode
             return
         self._mode = mode
-        cmd = LightCommand(rule["fx"], resolve_live(dict(rule.get("params", {})), bpm))
+        cmd = self._make(rule["fx"], dict(rule.get("params", {})), bpm, pos, track_id)
         self.send(cmd)
         self.last_sent = (LightEvent(0, label, "auto", cmd.fx, cmd.params), t)
 
-    def _catch_up(self, ahead: float, key: tuple, t: float, bpm: float | None) -> None:
+    def _catch_up(self, ahead: float, key: tuple, t: float, bpm: float | None,
+                  track_id: str | None = None) -> None:
         """Al engancharse a un tema ya empezado: el último efecto de fondo de la sección actual
         (los temporales —flash, strobe, build…— no se repiten a destiempo); si aún no ha llegado
         ninguno, el efecto básico."""
@@ -97,11 +142,11 @@ class LightsEngine:
             if ev.fx in BACKGROUND_FX:
                 if self._mode != ("show", key, ev.beat):
                     self._mode = ("show", key, ev.beat)
-                    cmd = LightCommand(ev.fx, resolve_live(dict(ev.params), bpm))
+                    cmd = self._make(ev.fx, dict(ev.params), bpm, ahead, track_id)
                     self.send(cmd)
                     self.last_sent = (ev, t)
                 return
-        self._send_rule(("fallback", key), self.cfg.fallback, "Efecto básico", t, bpm)
+        self._send_rule(("fallback", key), self.cfg.fallback, "Efecto básico", t, bpm, ahead, track_id)
 
     def update(self, snap: LiveSnapshot) -> list[LightEvent]:
         if not self.enabled:
@@ -128,7 +173,8 @@ class LightsEngine:
         key = (lead, d.track_id or d.track_path)
         if d.position_s is None:
             self._set_status(f"Manda el deck {lead}, pero no se lee su posición: efecto básico.")
-            self._send_rule(("fallback", key), self.cfg.fallback, "Efecto básico", snap.t, d.bpm)
+            self._send_rule(("fallback", key), self.cfg.fallback, "Efecto básico", snap.t, d.bpm,
+                            None, d.track_id)
             return []
         reason = None
         if key != self._key or not self._events:
@@ -145,7 +191,8 @@ class LightsEngine:
                 "no_grid": f"Deck {lead}: leyendo la rejilla de beats · efecto básico",
                 "no_fx": f"Deck {lead}: el tema no tiene eventos con efecto · efecto básico",
             }.get(reason or "no_show", f"Deck {lead}: sin eventos · efecto básico"))
-            self._send_rule(("fallback", key), self.cfg.fallback, "Efecto básico", snap.t, d.bpm)
+            self._send_rule(("fallback", key), self.cfg.fallback, "Efecto básico", snap.t, d.bpm,
+                            d.position_s, d.track_id)
             return []
         # Adelanto por latencia, en tiempo del tema (el pitch acelera o frena el tema).
         rate = 1.0
@@ -159,23 +206,46 @@ class LightsEngine:
         nxt = self._events[j_next] if j_next < len(self._events) else None
         nxt_txt = (f"próximo: {nxt.label} → {nxt.fx} en {self._times[j_next] - ahead:.1f} s"
                    if nxt else "no quedan eventos en el tema")
+        grid_times = self._grid.times if self._grid is not None else []
         if last is None or d.jumped or ahead < last:
             # Enganche (tema nuevo, cambio de deck, salto): efecto de la sección actual, sin
             # disparar eventos atrasados.
-            self._catch_up(ahead, key, snap.t, d.bpm)
+            self._next = j_next
+            self._next_beat = bisect.bisect_right(grid_times, ahead)
+            self._catch_up(ahead, key, snap.t, d.bpm, d.track_id)
             self._set_status(f"Deck {lead} sincronizado · {nxt_txt}")
             return []
         if d.playing is False:
             self._set_status(f"Deck {lead} parado · {nxt_txt}")
             return []
-        i = bisect.bisect_right(self._times, last)
-        fired = self._events[i:j_next]
-        for ev in fired:
-            cmd = ev.command()
-            if cmd is not None:
-                cmd = LightCommand(cmd.fx, resolve_live(cmd.params, d.bpm))
-                self.send(cmd)
-                self.last_sent = (ev, snap.t)
-                self._mode = ("show", key, ev.beat)
+        # Con planificador, se mira un poco más allá del sondeo actual y cada evento sale en su
+        # milisegundo exacto (si no, hasta `poll_s` tarde).
+        horizon = self.poll_s * rate * 1.5 if self.schedule is not None else 0.0
+        limit = ahead + horizon
+        fired = []
+        while self._next < len(self._events) and self._times[self._next] <= limit:
+            ev, t_ev = self._events[self._next], self._times[self._next]
+            self._next += 1
+            fired.append(ev)
+            if self.metronome or not ev.fx:
+                continue
+            cmd = self._make(ev.fx, dict(ev.params), d.bpm, t_ev, d.track_id)
+            self._dispatch(cmd, max(0.0, (t_ev - ahead) / rate))
+            self.last_sent = (ev, snap.t)
+            self._mode = ("show", key, ev.beat)
+        # Beats de la rejilla: `sync` en cada compás (BPM y fase reales al ESP32) y metrónomo.
+        numbers = self._grid.beat_numbers if self._grid is not None else []
+        while self._next_beat < len(grid_times) and grid_times[self._next_beat] <= limit:
+            b = self._next_beat
+            self._next_beat += 1
+            delay = max(0.0, (grid_times[b] - ahead) / rate)
+            if self.metronome:
+                self._dispatch(LightCommand("flash", {"color": "blanco", "dur_ms": 80}), delay)
+            elif numbers[b] == 1 and d.bpm:
+                self._dispatch(LightCommand("sync", {"bpm": round(float(d.bpm), 2), "phase": 0.0}), delay)
+        if self.metronome:
+            self._set_status(f"Calibración: destello en cada beat · latencia "
+                             f"{self.cfg.latency_compensation_ms} ms")
+            return fired
         self._set_status(f"Deck {lead} sonando · {len(self._events)} eventos · {nxt_txt}")
         return fired

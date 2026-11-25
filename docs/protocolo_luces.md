@@ -62,3 +62,20 @@ Colores: nombre en español o inglés (`rojo`, `verde`, `azul`, `blanco`, `amari
 Un `fx` desconocido no debe romper nada (el simulador hace un pulso breve).
 
 `bpm` llega ya resuelto con el BPM real del deck (en los archivos de efectos aparece como `"live"`).
+
+## Sincronización con el beat (latencia)
+
+- Los efectos que siguen el beat (`pulse`, `alternate`, `chase`, `wave`, `twinkle`) llevan `phase`
+  (0..1): en qué punto del beat está la música en el momento en que el comando debe aplicarse. El
+  ESP32 debe arrancar su reloj de beats en `ahora − phase × (60000 / bpm)` ms.
+- Cada compás llega `{"fx": "sync", "bpm": 131.5, "phase": 0.0}` en el instante del primer beat del
+  compás. No cambia el efecto ni el color: solo re-alinea el reloj de beats y el BPM (si se mueve el
+  pitch, las luces no se desfasan). Conserva el n.º de beat para alternancias y persecuciones.
+- La app ya adelanta todos los envíos `lights.latency_compensation_ms` (calibrable con el botón
+  **Latencia…**: metrónomo con un `flash` de 80 ms en cada beat) y los programa al milisegundo,
+  así que el ESP32 debe aplicar cada comando en cuanto lo recibe.
+
+## Colores por tema
+
+Los archivos de efectos usan la paleta del tema (`$primary`, `$secondary`, `$accent`, sacados de su
+tonalidad Camelot) y llegan al ESP32 ya convertidos a `#rrggbb`.

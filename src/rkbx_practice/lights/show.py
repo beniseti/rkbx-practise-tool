@@ -30,7 +30,7 @@ from pathlib import Path
 from .analysis import TrackAnalysis
 from .commands import LightCommand
 
-FORMAT_VERSION = 4   # 2: estructura · 3: apagón + drop en movimiento · 4: fondos siempre en movimiento
+FORMAT_VERSION = 5   # 2: estructura · 3: apagón + drop en movimiento · 4: siempre en movimiento · 5: paleta por tema e intensidad de drops
 
 
 @dataclass
@@ -74,48 +74,89 @@ class LightShow:
                    format_version=int(data.get("format_version", 1)))
 
 
-# Efecto por papel musical (ver structure.py) y dos momentos especiales:
-# «drop_hit» (el golpe justo en el drop) y «pre_drop» (último compás de la subida).
-# Valores especiales: "until_next" = duración en ms hasta la siguiente sección;
-# "live" = el BPM real del deck en el momento de enviar.
-DEFAULT_RULES: dict[str, dict] = {
-    # Nunca estático (pedido por el usuario): todos los fondos se mueven (ola, parpadeos,
-    # alternancia, persecución). El único momento quieto es el apagón antes del drop.
-    "intro": {"fx": "wave", "params": {"color": "azul", "color2": "morado", "bpm": "live", "beats": 4}},
-    "groove": {"fx": "alternate", "params": {"color": "morado", "color2": "azul", "bpm": "live"}},
-    "peak": {"fx": "chase", "params": {"color": "naranja", "bpm": "live", "beats": 1}},
-    "breakdown": {"fx": "twinkle", "params": {"color": "azul", "color2": "morado", "density": 0.15, "bpm": "live"}},
+# Efecto por papel musical (ver structure.py) y momentos especiales.
+# - Colores: `$primary`, `$secondary`, `$accent` = paleta del tema (palette.py), así una misma
+#   canción mantiene sus tonos.
+# - Drops y picos (Chorus) por intensidad: `drop_soft|medium|hard`, `peak_soft|medium|hard`
+#   (pedido del usuario: el Chorus no siempre igual). Un valor puede ser una lista de variantes:
+#   el 1.er drop del tema usa la primera, el 2.º la segunda…
+# - Valores especiales: "until_next" = ms hasta la siguiente sección; "live" = BPM real del deck.
+# - Nunca estático (pedido del usuario): todos los fondos se mueven; solo el apagón es quieto.
+DEFAULT_RULES: dict[str, object] = {
+    "intro": {"fx": "wave", "params": {"color": "$primary", "color2": "$secondary", "bpm": "live", "beats": 4}},
+    "groove": {"fx": "alternate", "params": {"color": "$primary", "color2": "$secondary", "bpm": "live"}},
+    "peak_soft": {"fx": "pulse", "params": {"color": "$secondary", "bpm": "live"}},
+    "peak_medium": [
+        {"fx": "alternate", "params": {"color": "$secondary", "color2": "$accent", "bpm": "live"}},
+        {"fx": "wave", "params": {"color": "$secondary", "color2": "$primary", "bpm": "live", "beats": 2}},
+    ],
+    "peak_hard": [
+        {"fx": "chase", "params": {"color": "$secondary", "bpm": "live", "beats": 1}},
+        {"fx": "alternate", "params": {"color": "$accent", "color2": "$secondary", "bpm": "live"}},
+    ],
+    "breakdown": {"fx": "twinkle", "params": {"color": "$secondary", "color2": "$primary", "density": 0.15,
+                                              "bpm": "live"}},
     "buildup": {"fx": "build", "params": {"color": "blanco", "dur_ms": "until_next"}},
     "pre_drop": {"fx": "strobe", "params": {"dur_ms": "until_next", "hz": 16}},
     # Subida → drop (Up → Chorus), pedido por el usuario: apagón momentáneo (`beats` beats antes
     # del drop) y en el drop se encienden con un efecto en movimiento.
     "blackout": {"fx": "off", "params": {}, "beats": 1},
     "drop_hit": {"fx": None, "params": {}},
-    "drop": {"fx": "chase", "params": {"color": "rojo", "bpm": "live", "beats": 0.5}},
-    "outro": {"fx": "wave", "params": {"color": "azul", "color2": "morado", "bpm": "live", "beats": 8}},
+    "drop_soft": [
+        {"fx": "pulse", "params": {"color": "$primary", "bpm": "live"}},
+        {"fx": "wave", "params": {"color": "$primary", "color2": "$accent", "bpm": "live", "beats": 2}},
+    ],
+    "drop_medium": [
+        {"fx": "alternate", "params": {"color": "$primary", "color2": "$accent", "bpm": "live"}},
+        {"fx": "chase", "params": {"color": "$primary", "bpm": "live", "beats": 1}},
+    ],
+    "drop_hard": [
+        {"fx": "chase", "params": {"color": "$accent", "bpm": "live", "beats": 0.5}},
+        {"fx": "alternate", "params": {"color": "$accent", "color2": "$primary", "bpm": "live"}},
+        {"fx": "wave", "params": {"color": "$accent", "color2": "$primary", "bpm": "live", "beats": 1}},
+    ],
+    "outro": {"fx": "wave", "params": {"color": "$primary", "color2": "$secondary", "bpm": "live", "beats": 8}},
 }
 
 
-def effective_rules(rules: dict[str, dict] | None) -> dict[str, dict]:
-    """Reglas por defecto con las de config.json encima (solo claves de papel conocidas)."""
-    def copy(v: dict) -> dict:
-        d = {"fx": v.get("fx"), "params": dict(v.get("params", {}))}
-        if "beats" in v:
-            d["beats"] = v["beats"]
-        return d
+def _copy_rule(v: dict) -> dict:
+    d = {"fx": v.get("fx"), "params": dict(v.get("params", {}))}
+    if "beats" in v:
+        d["beats"] = v["beats"]
+    return d
 
-    out = {k: copy(v) for k, v in DEFAULT_RULES.items()}
+
+def effective_rules(rules: dict | None) -> dict[str, list[dict]]:
+    """Reglas por defecto con las de config.json encima. Cada clave → lista de variantes.
+    `drop` o `peak` sueltos en config.json valen para todas sus intensidades."""
+    def as_list(v) -> list[dict]:
+        return [_copy_rule(x) for x in (v if isinstance(v, list) else [v]) if isinstance(x, dict)]
+
+    out = {k: as_list(v) for k, v in DEFAULT_RULES.items()}
     for k, v in (rules or {}).items():
         key = k.lower()
-        if key in out and isinstance(v, dict):
-            merged = copy(v)
-            if "beats" not in merged and "beats" in out[key]:
-                merged["beats"] = out[key]["beats"]
-            out[key] = merged
+        variants = as_list(v)
+        if not variants:
+            continue
+        if key in ("drop", "peak"):
+            for tier in ("soft", "medium", "hard"):
+                out[f"{key}_{tier}"] = variants
+        elif key in out:
+            if "beats" in out[key][0]:
+                for x in variants:
+                    x.setdefault("beats", out[key][0]["beats"])
+            out[key] = variants
     return out
 
 
-def _resolve(params: dict, ms_to_next: float | None) -> dict:
+def pick_rule(rules: dict[str, list[dict]], key: str, occurrence: int = 0) -> dict:
+    variants = rules.get(key) or []
+    return variants[occurrence % len(variants)] if variants else {}
+
+
+def _resolve(params: dict, ms_to_next: float | None, palette: dict | None = None) -> dict:
+    from .palette import apply_palette
+    params = apply_palette(params, palette)
     out = {}
     for k, v in params.items():
         if v == "until_next":
@@ -127,7 +168,7 @@ def _resolve(params: dict, ms_to_next: float | None) -> dict:
 
 
 def generate_show(track_id: str, title: str, analysis: TrackAnalysis,
-                  rules: dict[str, dict] | None = None) -> LightShow:
+                  rules: dict | None = None, palette: dict | None = None) -> LightShow:
     """Eventos según la estructura musical (secciones con papel) y las reglas.
 
     - Al inicio de cada sección, el efecto de su papel.
@@ -149,27 +190,30 @@ def generate_show(track_id: str, title: str, analysis: TrackAnalysis,
 
     events: dict[int, LightEvent] = {}
 
-    def add(beat: int, label: str, key: str, until: int | None, source: str = "structure") -> None:
+    def add(beat: int, label: str, key: str, until: int | None, source: str = "structure",
+            occurrence: int = 0) -> None:
         if not 1 <= beat <= n:
             return
-        rule = r.get(key) or {}
+        rule = pick_rule(r, key, occurrence)
         ms = ms_between(beat, until) if until else None
-        events[beat] = LightEvent(beat, label, source, rule.get("fx"), _resolve(rule.get("params", {}), ms))
+        events[beat] = LightEvent(beat, label, source, rule.get("fx"),
+                                  _resolve(rule.get("params", {}), ms, palette))
 
     sections = analysis.sections
     for k, sec in enumerate(sections):
         nxt = sections[k + 1] if k + 1 < len(sections) else None
         until = sec.end
-        if sec.role == "drop":
-            if r.get("drop_hit", {}).get("fx"):
+        if sec.role in ("drop", "peak"):
+            key = f"{sec.role}_{sec.tier or 'medium'}"
+            if sec.role == "drop" and pick_rule(r, "drop_hit").get("fx"):
                 add(sec.start, f"{sec.name_es} · golpe", "drop_hit", until)
-                add(sec.start + 1, sec.name_es, "drop", until)
+                add(sec.start + 1, sec.name_es, key, until, occurrence=sec.occurrence)
             else:
-                add(sec.start, sec.name_es, "drop", until)
+                add(sec.start, sec.name_es, key, until, occurrence=sec.occurrence)
         else:
             add(sec.start, sec.name_es, sec.role, until)
         if sec.role == "buildup" and nxt is not None and nxt.role == "drop":
-            black = r.get("blackout", {})
+            black = pick_rule(r, "blackout")
             gap = int(black.get("beats", 1)) if black.get("fx") else 0
             dark = nxt.start - gap                       # apagón justo antes del drop
             pre = nxt.start - 4                          # último compás antes del drop

@@ -61,6 +61,7 @@
         <span>Efecto: <b id="nowFx">—</b></span>
         <span>Base: <b id="nowBase">apagado</b></span>
         <span class="dim" id="count">0 comandos</span>
+        <span class="dim" id="sync">sin sync</span>
       </div>
     </div>
     <div class="panel" style="margin-top:16px">
@@ -137,8 +138,12 @@ function resetZones() {
 resetZones();
 
 function apply(cmd) {
-  const now = performance.now();
+  const now0 = performance.now();
   const fx = String(cmd.fx || "?").toLowerCase();
+  if (fx === "sync") { applySync(cmd, now0); return; }
+  // `phase`: punto del beat (0..1) en el que se aplica; se alinea el reloj de beats del efecto.
+  const beatMsCmd = 60000 / (Number(cmd.bpm) || 128);
+  const now = cmd.phase !== undefined ? now0 - Number(cmd.phase) * beatMsCmd : now0;
   const dur = Number(cmd.dur_ms ?? cmd.duration_ms ?? 0);
   const color = (d) => parseColor(cmd.color, d);
   const targets = expandZones(cmd.zones);
@@ -170,6 +175,24 @@ function apply(cmd) {
   document.getElementById("nowFx").textContent =
     `${fx}${cmd.zones && cmd.zones !== "all" ? ` → zonas ${targets.join(",")}` : ""}`;
   document.getElementById("nowBase").textContent = describeBases();
+}
+
+// `sync` (cada compás): BPM y fase reales del deck. Re-alinea los fondos que siguen el beat sin
+// cambiar el efecto ni el color (así no se desfasan aunque cambie el pitch).
+function applySync(cmd, now) {
+  const bpm = Number(cmd.bpm) || 128, beatMs = 60000 / bpm;
+  const anchor = now - (Number(cmd.phase) || 0) * beatMs;
+  S.zones.forEach(st => {
+    const b = st.base;
+    if (["pulse", "alternate", "chase", "wave", "twinkle"].includes(b.mode)) {
+      // Se conserva el n.º de beat (para alternancias y persecuciones) y se corrige la fase.
+      const beats = Math.round((anchor - b.since) / (60000 / (b.bpm || bpm)));
+      b.since = anchor - beats * beatMs;
+      b.bpm = bpm;
+    }
+  });
+  S.syncs = (S.syncs || 0) + 1;
+  document.getElementById("sync").textContent = `sync ${bpm.toFixed(1)} BPM (${S.syncs})`;
 }
 
 function describeBases() {
@@ -325,7 +348,11 @@ function connect() {
                       document.getElementById("status").textContent = "conectado"; };
   es.onerror = () => { document.getElementById("dot").classList.remove("on");
                        document.getElementById("status").textContent = "sin conexión (¿está el simulador en marcha?)"; };
-  es.onmessage = (e) => { const msg = JSON.parse(e.data); logCmd(msg); if (!msg.cmd.error) apply(msg.cmd); };
+  es.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.cmd.fx !== "sync") logCmd(msg);            // los sync (cada compás) no llenan el registro
+    if (!msg.cmd.error) apply(msg.cmd);
+  };
 }
 connect();
 

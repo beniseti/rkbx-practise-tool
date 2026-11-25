@@ -232,6 +232,9 @@ class MainWindow(QMainWindow):
         self.lights_check.toggled.connect(self.ctl.set_lights_enabled)
         self.lights_button = QPushButton("Efectos…")
         self.lights_button.clicked.connect(self._show_lights_editor)
+        self.latency_button = QPushButton("Latencia…")
+        self.latency_button.setToolTip("Calibrar el retraso de las luces con un metrónomo")
+        self.latency_button.clicked.connect(self._show_latency)
         self.sim_button = QPushButton("Simulador")
         self.sim_button.setToolTip("Abre el simulador de luces en el navegador (hace de ESP32)")
         self.sim_button.clicked.connect(self._open_simulator)
@@ -239,6 +242,7 @@ class MainWindow(QMainWindow):
         head.addWidget(self.lights_check)
         head.addWidget(self.lights_button)
         head.addWidget(self.sim_button)
+        head.addWidget(self.latency_button)
         head.addWidget(self.history_button)
         head.addWidget(self.compact_button)
         root.addLayout(head)
@@ -548,6 +552,10 @@ class MainWindow(QMainWindow):
         self.compact_button.setText("Ampliar" if self._compact else "Compactar")
         if self._compact:
             self.resize(self.width(), self.minimumSizeHint().height())
+
+    def _show_latency(self) -> None:
+        from .lights_editor import LatencyDialog
+        LatencyDialog(self.ctl, self).exec()
 
     def _open_simulator(self) -> None:
         import webbrowser

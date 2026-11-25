@@ -104,29 +104,62 @@ def test_up_then_chorus_is_drop_even_without_bands():
 
 
 def test_generate_show_from_structure(tmp_path):
+    from rkbx_practice.lights.palette import palette_for
     a = techno_analysis()
-    show = generate_show("1001", "A - B", a, LightsConfig().rules)
+    pal = palette_for("8A", "1001")
+    show = generate_show("1001", "A - B", a, LightsConfig().rules, pal)
     ev = {e.beat: e for e in show.events}
-    assert ev[1].fx == "wave"
-    assert ev[33].fx == "chase" and ev[33].params["bpm"] == "live"          # pico
+    assert ev[1].fx == "wave" and ev[1].params["color"] == pal["primary"]   # mismos tonos del tema
+    assert ev[33].fx in {"pulse", "alternate", "wave", "chase"} and ev[33].params["bpm"] == "live"
     assert ev[97].fx == "twinkle"
     assert ev[129].fx == "build" and ev[129].params["dur_ms"] == 16000      # 32 beats a 120 BPM
     assert ev[157].fx == "strobe" and ev[157].params["dur_ms"] == 1500      # último compás hasta el apagón
     assert ev[160].fx == "off" and ev[160].label == "Apagón"                # apagón 1 beat antes del drop
-    assert ev[161].fx == "chase" and ev[161].params["color"] == "rojo"      # se encienden en movimiento
+    drop = next(x for x in a.sections if x.role == "drop")
+    assert drop.tier == "hard"                                              # vuelve el bombo a tope tras el break
+    assert ev[161].fx == "chase" and ev[161].params["color"] == pal["accent"]   # fuerte: acento en movimiento
     assert 162 not in ev
     assert ev[225].fx == "wave"
     store = ShowStore(tmp_path)
     store.save(show)
     again = store.load("1001")
     assert [(e.beat, e.fx, e.params) for e in again.events] == [(e.beat, e.fx, e.params) for e in show.events]
-    assert json.loads(store.path("1001").read_text())["format_version"] == 4
+    assert json.loads(store.path("1001").read_text())["format_version"] == 5
+
+
+def test_drop_intensity_tiers_and_variants():
+    from rkbx_practice.lights.analysis import build_analysis
+    from rkbx_practice.lights.show import effective_rules
+    from rkbx_practice.lights.structure import tier_for
+    assert (tier_for(0.3), tier_for(0.6), tier_for(0.9)) == ("soft", "medium", "hard")
+    # Dos drops fuertes en el mismo tema → variantes distintas.
+    grid = BeatGrid.uniform(128.0, n_beats=192)
+    phrases = [Phrase(1, "Intro"), Phrase(33, "Up"), Phrase(65, "Chorus"), Phrase(97, "Up"), Phrase(129, "Chorus")]
+    a = build_analysis(grid, phrases, {}, "")
+    drops = [x for x in a.sections if x.role == "drop"]
+    assert [x.occurrence for x in drops] == [0, 1]
+    ev = {e.beat: e for e in generate_show("1", "", a, {}).events}
+    r = effective_rules({})
+    key = f"drop_{drops[0].tier}"
+    assert ev[65].fx == r[key][0]["fx"] and ev[129].fx == r[key][1]["fx"]
+
+
+def test_palette_from_camelot():
+    from rkbx_practice.lights.palette import apply_palette, palette_for
+    p8, p9, p8b = palette_for("8A"), palette_for("9A"), palette_for("8B")
+    assert p8 != p9 and p8["primary"].startswith("#") and len(p8["primary"]) == 7
+    assert palette_for("8A") == p8                                        # estable
+    assert palette_for(None, "123") == palette_for(None, "123")           # sin tonalidad: por ID
+    assert apply_palette({"color": "$accent", "x": 1}, p8) == {"color": p8["accent"], "x": 1}
 
 
 def test_config_rules_override_defaults():
     from rkbx_practice.lights.show import effective_rules
-    r = effective_rules({"Drop": {"fx": "rainbow", "params": {"dur_ms": 8000}}, "Chorus": {"fx": "x"}})
-    assert r["drop"]["fx"] == "rainbow" and "chorus" not in r and r["groove"]["fx"] == "alternate"
+    r = effective_rules({"Drop": {"fx": "rainbow", "params": {"dur_ms": 8000}}, "Chorus": {"fx": "x"},
+                         "peak_hard": [{"fx": "chase"}, {"fx": "wave"}]})
+    assert all(r[f"drop_{t}"][0]["fx"] == "rainbow" for t in ("soft", "medium", "hard"))
+    assert "chorus" not in r and r["groove"][0]["fx"] == "alternate"
+    assert [x["fx"] for x in r["peak_hard"]] == ["chase", "wave"]
 
 
 def test_live_bpm_is_resolved_when_sending():
@@ -139,6 +172,10 @@ def test_params_text():
     assert parse_params("color=rojo dur_ms=200 speed=1.5") == {"color": "rojo", "dur_ms": 200, "speed": 1.5}
     assert parse_params("color=rojo, zones=1,5,9") == {"color": "rojo", "zones": "1,5,9"}
     assert format_params({"color": "rojo", "dur_ms": 200}) == "color=rojo dur_ms=200"
+
+
+def no_sync(sent):
+    return [c for c in sent if c.fx != "sync"]
 
 
 def make_engine(latency_ms=0):
@@ -169,6 +206,7 @@ def test_engine_fires_events_in_order():
     fired = play(eng, 0.0, 20.0, pos0=0.0)
     assert [e.beat for e in fired] == [9, 33]             # el 17 no tiene efecto
     # Al engancharse aún no ha llegado ningún efecto de fondo: primero el efecto básico.
+    sent = no_sync(sent)
     assert sent[0].fx == "wave"
     assert sent[1:] == [LightCommand("strobe", {"dur_ms": 1000}), LightCommand("flash", {"color": "rojo"})]
     assert eng.lead_deck == 1
@@ -208,7 +246,7 @@ def test_engine_basic_effect_until_events_are_loaded():
     shows["A"] = LightShow("A", events=[LightEvent(1, "Intro", "structure", "breathe", {"color": "azul"}),
                                         LightEvent(9, "Groove", "structure", "alternate", {"bpm": "live"})])
     play(eng, 1.02, 5.0, pos0=1.02)
-    assert [c.fx for c in sent] == ["wave", "breathe", "alternate"]
+    assert [c.fx for c in no_sync(sent)] == ["wave", "breathe", "alternate"]
 
 
 def test_engine_idle_when_nothing_sounds():
@@ -376,7 +414,7 @@ def test_old_show_files_are_regenerated_unless_manual(library, tmp_path):
     (tmp_path / "1001.json").write_text(json.dumps(old))
     mgr = LightsManager(cfg, library, BeatGridCache(), sender=Sender(), analyzer=lambda p: techno_analysis())
     show = mgr.load_or_generate(library.track("1001"))
-    assert show.format_version == 4 and any(e.fx == "build" for e in show.events)
+    assert show.format_version == 5 and any(e.fx == "build" for e in show.events)
     old["events"].append({"beat": 9, "label": "manual", "source": "manual", "fx": "flash", "params": {}})
     (tmp_path / "1001.json").write_text(json.dumps(old))
     show = mgr.load_or_generate(library.track("1001"))
@@ -408,7 +446,7 @@ def test_cli_regenerate_keeps_manual(library, tmp_path, monkeypatch):
     assert cli.main(["--config", str(cfg_path), "--library-json", lib_json,
                      "lights", "regenerate", "--playlist", "Favoritos"]) == 0
     assert store.load("1001").events[0].source == "manual"          # conservado
-    assert store.load("1002").format_version == 4                    # regenerado
+    assert store.load("1002").format_version == 5                    # regenerado
     assert cli.main(["--config", str(cfg_path), "--library-json", lib_json,
                      "lights", "regenerate", "--playlist", "Favoritos", "--force"]) == 0
     assert store.load("1001").events[0].source == "structure"
@@ -427,8 +465,61 @@ def test_default_backgrounds_always_move():
     from rkbx_practice.lights.show import effective_rules
     moving = {"wave", "twinkle", "alternate", "chase", "pulse", "build", "strobe", "flash", "rainbow"}
     r = effective_rules(LightsConfig().rules)
-    for key, rule in r.items():
-        if key in ("blackout", "drop_hit") or not rule.get("fx"):
-            continue
-        assert rule["fx"] in moving, key
-        assert "zones" not in rule["params"], key          # ninguna zona se queda sin efecto
+    for key, variants in r.items():
+        for rule in variants:
+            if key in ("blackout", "drop_hit") or not rule.get("fx"):
+                continue
+            assert rule["fx"] in moving, key
+            assert "zones" not in rule["params"], key      # ninguna zona se queda sin efecto
+
+
+def test_engine_sends_bar_sync_and_beat_phase():
+    sent = []
+    show = LightShow("A", events=[LightEvent(1, "Intro", "structure", "wave", {"bpm": "live"}),
+                                  LightEvent(9, "Groove", "structure", "alternate", {"bpm": "live"})])
+    eng = LightsEngine(LightsConfig(enabled=True), MixerConfig(), DetectionConfig(),
+                       shows=lambda tid: show, grids=lambda p: GRID, send=sent.append,
+                       track_bpm=lambda tid: 120.0)
+    play(eng, 0.0, 6.0, pos0=0.0)
+    syncs = [c for c in sent if c.fx == "sync"]
+    assert len(syncs) >= 2 and syncs[0].params == {"bpm": 120.0, "phase": 0.0}   # un sync por compás
+    alt = next(c for c in sent if c.fx == "alternate")
+    assert alt.params["phase"] == 0.0                     # el evento cae justo en el beat
+
+
+def test_engine_schedules_events_at_exact_time():
+    sent, scheduled = [], []
+    show = LightShow("A", events=[LightEvent(9, "Chorus", "structure", "strobe", {"dur_ms": 500})])
+    eng = LightsEngine(LightsConfig(enabled=True), MixerConfig(), DetectionConfig(),
+                       shows=lambda tid: show, grids=lambda p: GRID, send=sent.append,
+                       track_bpm=lambda tid: 120.0, schedule=lambda d, fn: scheduled.append((d, fn)),
+                       poll_s=0.02)
+    # Sondeos cada 20 ms; el beat 9 está en 4.000 s. En el sondeo de 3.99 s ya se programa
+    # para dentro de 10 ms en vez de esperar al sondeo de 4.01 s.
+    play(eng, 0.0, 3.99, pos0=0.0, dt=0.03)
+    assert not any(c.fx == "strobe" for c in sent)          # no se envía antes de tiempo
+    for d, fn in scheduled:
+        fn()
+    assert any(c.fx == "strobe" for c in sent)
+    assert any(abs(d - 0.01) < 1e-6 for d, _ in scheduled)  # programado para los 4.000 s exactos
+
+
+def test_engine_metronome_flashes_every_beat_and_mutes_events():
+    eng, sent = make_engine()
+    eng.metronome = True
+    play(eng, 0.0, 6.0, pos0=0.0)
+    flashes = [c for c in sent if c.fx == "flash" and c.params.get("dur_ms") == 80]
+    assert 10 <= len(flashes) <= 13                         # ~12 beats en 6 s a 120 BPM
+    assert not any(c.fx == "strobe" for c in sent)          # los eventos del tema no suenan
+    assert "Calibración" in eng.status
+
+
+def test_save_value_keeps_rest_of_config(tmp_path):
+    from rkbx_practice.config import load_config, save_value
+    p = tmp_path / "config" / "config.json"
+    p.parent.mkdir()
+    p.write_text(json.dumps({"rekordbox": {"decks": 2}, "lights": {"esp32_port": 4210}}))
+    save_value(p, ["lights", "latency_compensation_ms"], 85)
+    cfg = load_config(p)
+    assert cfg.lights.latency_compensation_ms == 85 and cfg.lights.esp32_port == 4210
+    assert cfg.rekordbox.decks == 2 and cfg.source_path == p

@@ -41,10 +41,15 @@ class Section:
     mid: float
     high: float
     trend: float          # crecimiento de medios+agudos dentro de la sección
+    intensity: float = 0.0  # 0..1 (drops y picos): graves, agudos y contraste con lo anterior
+    tier: str = ""          # "soft", "medium" o "hard" según la intensidad (drops y picos)
+    occurrence: int = 0     # n.º de drop/pico dentro del tema (0, 1, 2…) para variar efectos
 
     @property
     def name_es(self) -> str:
         base = ROLE_NAMES_ES.get(self.role, self.role)
+        if self.tier:
+            base += {"soft": " suave", "medium": " medio", "hard": " fuerte"}[self.tier]
         return f"{base} ({self.label})" if self.label and self.label.lower() != base.lower() else base
 
 
@@ -123,4 +128,33 @@ def classify_sections(analysis) -> list[Section]:
             role = "groove"
         sections.append(Section(start, end, role, label, round(lo, 3), round(mi, 3), round(hi, 3),
                                 round(trend, 3)))
+    _rate_intensity(sections, has_energy)
     return sections
+
+
+# Intensidad de drops y picos (pedido del usuario: el Chorus no debe tener siempre el mismo
+# efecto; varía según lo fuerte que sea el drop).
+SOFT_BELOW = 0.50
+HARD_FROM = 0.72
+
+
+def tier_for(intensity: float) -> str:
+    return "soft" if intensity < SOFT_BELOW else "hard" if intensity >= HARD_FROM else "medium"
+
+
+def _rate_intensity(sections: list[Section], has_energy: bool) -> None:
+    counts: dict[str, int] = {}
+    for k, sec in enumerate(sections):
+        if sec.role not in ("drop", "peak"):
+            continue
+        if has_energy:
+            prev_low = sections[k - 1].low if k else 0.0
+            lo_n = min(1.0, sec.low / 1.2)
+            contrast = min(1.0, max(0.0, sec.low - prev_low))
+            intensity = 0.45 * lo_n + 0.30 * min(1.0, sec.high) + 0.25 * contrast
+        else:
+            intensity = 0.70 if sec.role == "drop" else 0.50   # sin bandas: solo por etiqueta
+        sec.intensity = round(intensity, 3)
+        sec.tier = tier_for(intensity)
+        sec.occurrence = counts.get(sec.role, 0)
+        counts[sec.role] = sec.occurrence + 1

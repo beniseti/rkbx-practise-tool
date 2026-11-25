@@ -38,10 +38,23 @@ class LightsManager:
         if cfg.lights.send_to_simulator and hasattr(self.sender, "add_target"):
             self.sender.add_target("127.0.0.1", cfg.lights.simulator_port)
         self.simulator = None
+        from .palette import palette_for
+
+        def track_palette(tid):
+            t = library.track(tid) if tid else None
+            return palette_for(t.camelot_str if t and t.camelot else None, tid) if tid else None
+
+        def schedule(delay_s: float, fn) -> None:
+            timer = threading.Timer(delay_s, fn)   # envío en el milisegundo exacto del evento
+            timer.daemon = True
+            timer.start()
+
         self.engine = LightsEngine(
             cfg.lights, cfg.mixer, cfg.detection, shows=self.cached_show,
             grids=grids.get_nowait, send=self.sender.send,
-            track_bpm=lambda tid: (library.track(tid).bpm if tid and library.track(tid) else None))
+            track_bpm=lambda tid: (library.track(tid).bpm if tid and library.track(tid) else None),
+            track_palette=track_palette, schedule=schedule,
+            poll_s=cfg.live.poll_interval_ms / 1000.0)
 
     # --- análisis y archivos ----------------------------------------
     def anlz_path(self, track: Track) -> str | None:
@@ -58,7 +71,9 @@ class LightsManager:
         analysis = analysis or self.analyze(track)
         if analysis is None:
             return None
-        return generate_show(track.id, track.display, analysis, self.cfg.lights.rules)
+        from .palette import palette_for
+        return generate_show(track.id, track.display, analysis, self.cfg.lights.rules,
+                             palette_for(track.camelot_str if track.camelot else None, track.id))
 
     def load_or_generate(self, track: Track, save: bool = True) -> LightShow | None:
         show = self.store.load(track.id)

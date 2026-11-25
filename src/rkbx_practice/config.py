@@ -144,6 +144,7 @@ class AppConfig:
     ui: UiConfig = field(default_factory=UiConfig)
     lights: LightsConfig = field(default_factory=LightsConfig)
     base_dir: Path = PROJECT_ROOT
+    source_path: Path | None = None   # config.json del que se cargó (para guardar ajustes)
 
     def resolve_path(self, value: str | Path) -> Path:
         """Rutas relativas del JSON se resuelven contra la raíz del proyecto."""
@@ -211,4 +212,21 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         data = json.load(fh)
     # La raíz del proyecto es la carpeta que contiene `config/`.
     base_dir = path.resolve().parent.parent if path.parent.name == "config" else path.resolve().parent
-    return config_from_dict(data, base_dir=base_dir)
+    cfg = config_from_dict(data, base_dir=base_dir)
+    cfg.source_path = path
+    return cfg
+
+
+def save_value(path: str | Path, keys: list[str], value) -> None:
+    """Cambia un valor en config.json conservando el resto del archivo (p. ej. la latencia
+    calibrada desde la ventana)."""
+    from collections import OrderedDict
+    path = Path(path)
+    data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=OrderedDict) if path.exists() else {}
+    node = data
+    for k in keys[:-1]:
+        node = node.setdefault(k, OrderedDict())
+    node[keys[-1]] = value
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp.replace(path)
