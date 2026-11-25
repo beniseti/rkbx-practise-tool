@@ -26,3 +26,27 @@ class LightCommand:
     def from_dict(cls, data: dict) -> "LightCommand":
         data = dict(data)
         return cls(fx=data.pop("fx"), params=data)
+
+
+def parse_params(text: str) -> dict:
+    """`color=rojo dur_ms=200` → {"color": "rojo", "dur_ms": 200}. Los números se convierten."""
+    out: dict = {}
+    for part in text.replace(",", " ").split():
+        if "=" not in part:
+            continue
+        k, v = part.split("=", 1)
+        k, v = k.strip(), v.strip()
+        if not k:
+            continue
+        try:
+            out[k] = int(v)
+        except ValueError:
+            try:
+                out[k] = float(v)
+            except ValueError:
+                out[k] = v
+    return out
+
+
+def format_params(params: dict) -> str:
+    return " ".join(f"{k}={v}" for k, v in params.items())

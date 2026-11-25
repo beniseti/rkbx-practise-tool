@@ -96,6 +96,27 @@ class LightsConfig:
     esp32_ip: str = "192.168.4.1"
     esp32_port: int = 4210
     latency_compensation_ms: int = 0
+    events_dir: str = "data/lights"
+    # Catálogo de efectos del ESP32 con sus parámetros por defecto (cada uno los suyos).
+    effects: dict[str, dict] = field(default_factory=lambda: {
+        "flash": {"color": "blanco", "dur_ms": 200},
+        "strobe": {"dur_ms": 1000},
+        "rainbow": {"dur_ms": 4000},
+        "color": {"color": "azul"},
+        "off": {},
+    })
+    # Qué efecto se asigna automáticamente a cada tipo de cambio (editable luego tema a tema).
+    rules: dict[str, dict] = field(default_factory=lambda: {
+        "Intro": {"fx": "color", "params": {"color": "azul"}},
+        "Up": {"fx": "rainbow", "params": {"dur_ms": 4000}},
+        "Down": {"fx": "color", "params": {"color": "morado"}},
+        "Chorus": {"fx": "strobe", "params": {"dur_ms": 1000}},
+        "Verse": {"fx": "color", "params": {"color": "verde"}},
+        "Bridge": {"fx": "color", "params": {"color": "naranja"}},
+        "Outro": {"fx": "off", "params": {}},
+        "drop": {"fx": "flash", "params": {"color": "blanco", "dur_ms": 200}},
+        "break": {"fx": "color", "params": {"color": "azul"}},
+    })
 
 
 @dataclass

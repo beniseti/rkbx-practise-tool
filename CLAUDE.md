@@ -313,7 +313,7 @@ Implementación: "ya estaba sonando" = al menos un beat por encima del umbral. "
 
 Implementación: "baja"/"sube" = cruza `eq_low_threshold` (con 0,02 de histéresis); ambos decks deben sonar. Compás/frase se evalúan en la posición del deck entrante cuando suben sus graves.
 
-## 11. FASE FUTURA: luces con ESP32 (no implementar todavía)
+## 11. Luces con ESP32 (implementado, pendiente de probar con el ESP32)
 
 Diseñar el resto del código para que añadir esto después sea sencillo.
 
@@ -326,7 +326,16 @@ Diseñar el resto del código para que añadir esto después sea sencillo.
   - `{"fx": "rainbow", ...}` — parámetros por definir.
 - Cada efecto tiene su propio conjunto de parámetros; el formato debe admitir parámetros distintos por efecto.
 
-Preparado: `LeadDeckTracker` (deck que manda), `BeatGrid`, `DeckState.jumped`, oyentes del bucle en vivo y `lights/commands.py` (formato propuesto). Ver `lights/__init__.py`.
+Implementación (`src/rkbx_practice/lights/`):
+
+- `analysis.py`: rejilla (`PQTZ`), frases con tipo (`PSSI`: Intro/Up/Down/Chorus/Outro o Verse/Bridge según el mood) y energía de graves por beat (`PWV7` de 3 bandas en .2EX; si no, altura de `PWV5`). Cambios de energía: en inicio de compás, media de 16 beats antes/después; `drop` si sube ×1,8, `break` si baja a ×0,55; separados ≥ 32 beats.
+- `show.py`: archivo `data/lights/<track_id>.json` (`lights.events_dir`), eventos en beats con `label`, `source` (`phrase`/`energy`/`manual`), `fx` (o `null`) y `params`. Se genera con `lights.rules` (etiqueta → efecto; «Verse 2» usa la regla «Verse»); si frase y cambio de energía coinciden, queda uno («Chorus + drop») con la regla del cambio.
+- `engine.py`: manda el deck de más volumen efectivo (empate: el último que entró). La posición se adelanta `latency_compensation_ms` × (bpm actual / bpm del tema) y se disparan los eventos cruzados desde el sondeo anterior. Nunca dispara eventos atrasados: tras un salto, cambio de deck o tema, o con el deck parado, solo resincroniza.
+- `udp.py`: JSON por UDP no bloqueante a `esp32_ip:esp32_port`; los errores de red se registran y no paran nada.
+- `manager.py`: caché de archivos para el bucle en vivo (nunca lee el disco en el bucle); si un tema no tiene archivo, se genera en segundo plano la primera vez que suena.
+- Catálogo de efectos y parámetros por defecto en `lights.effects`; reglas en `lights.rules` (ambos en config.json).
+- Ventana: casilla **Luces** (activar en directo) y botón **Efectos…** (editor por tema: compás, tiempo, sección, efecto, parámetros, Probar, Añadir/Quitar, Regenerar, Guardar).
+- CLI: `lights show <tema> [--regenerate]`, `lights send <fx> color=rojo dur_ms=200`.
 
 ## 12. Fases de desarrollo
 
@@ -345,7 +354,7 @@ Trabajar en este orden. Las fases 1 y 2 no necesitan Rekordbox abierto.
 - Que la ruta ANLZ en memoria permite identificar el tema en master.db.
 - Direcciones de faders, EQ de graves, crossfader y deck master para esa versión. Fader del deck 1 hallado como **variable global** dentro de `rekordbox.exe` (`módulo+0x5a876c8`, f64, posición lineal 0..1): no necesita cadena de punteros; **confirmado estable tras reiniciar**. Fader del deck 2 en `módulo+0x5a876d0` (+8 bytes): los faders forman una tabla de f64 contiguos (decks 3 y 4 probablemente en `+0x5a876d8` y `+0x5a876e0`, sin confirmar). Para buscar controles vecinos (crossfader, EQ) se usa `python -m tools.offset_detect --watch DESDE HASTA`. BPM del deck 1 (cadena `0x58d38c8,0x0,0x2b0,0x1a0`) también confirmado tras reiniciar. EQ: tabla global de f64 (0..1, centro 0.5), 3 por deck en orden HI/MID/LOW, 0x18 bytes por deck: deck 1 HI `+0x58b3398`, MID `+0x58b33a0`, LOW `+0x58b33a8`; deck 2 HI `+0x58b33b0`, MID `+0x58b33b8`, LOW `+0x58b33c0` (confirmado con --watch; decks 3-4 previsiblemente LOW `+0x58b33d8` y `+0x58b33f0`, sin comprobar). BPM del deck 2: `0x58d38c8,0x8,0x2b0,0x1a0` (confirmado con `live`). Ruta ANLZ: deck 1 `0x59ff0a8,0x8,0x3f0`, deck 2 `0x59ff0a8,0x10,0x3f0` (lista de decks, 0x8 por deck; decks 3-4 previsiblemente 0x18 y 0x20). La del deck 1 (`0x59ff0a8,0x38,0x3f0`) apuntaba al tema ANTERIOR del deck (Rekordbox guarda ambos); se quitó y el asistente ahora pide volver a cargar el primer tema para distinguir la posición del tema actual. Posición: deck 1 `0x58d38c8,0x0,0x2b0,0x138`, deck 2 `0x58d38c8,0x8,0x2b0,0x138` (mismo objeto que el BPM; hallada con `--anchor bpm` + `--compare-decks`; f64 en segundos, confirmado con `--validate`). En la zona de los faders solo hay faders y gain. **Los faders globales son la posición del fader físico de la controladora**: si se mueven con el ratón o la controladora no está conectada, valen 0. El usuario mezcla siempre con la controladora, así que se da por bueno (no se busca la dirección del fader de pantalla); **confirmado funcionando en la ventana con la controladora**. La app usa la **posición** lineal del fader (no la ganancia logarítmica): `fader_zero_threshold` = 5 % del recorrido.
 - **Deck master: descartado.** El usuario no usa SYNC, así que el master no aporta; para saber qué tema suena se usa el deck con el fader más alto. `is_master` queda como campo opcional (no se avisa si falta).
-- Formato final de los comandos UDP y lista completa de efectos.
+- Formato final de los comandos UDP y lista completa de efectos (implementado con la propuesta `{"fx": …, parámetros}` y el catálogo de `lights.effects`; falta confirmarlo con el firmware del ESP32). Falta comprobar en real los tipos de frase y la lectura de `PWV7`/`PWV5` con pyrekordbox.
 - Probar en Windows real: lectura de master.db con la versión de pyrekordbox instalada, ventana PySide6 y `tools/offset_detect` con Rekordbox abierto (el código se ha escrito y probado en Linux con dobles de prueba).
 - Plan B (UI Automation): solo está prevista la interfaz (`live/sources.py`, `DeckSource`); falta decidir la dependencia (`uiautomation` o `pywinauto`) cuando haga falta.
 

@@ -29,7 +29,12 @@
   },
   "mixer": {
     "crossfader_enabled": false,
-    "crossfader_assign": {"1": "A", "2": "B", "3": "A", "4": "B"}
+    "crossfader_assign": {
+      "1": "A",
+      "2": "B",
+      "3": "A",
+      "4": "B"
+    }
   },
   "detection": {
     "fader_zero_threshold": 0.05,
@@ -55,6 +60,78 @@
     "enabled": false,
     "esp32_ip": "192.168.4.1",
     "esp32_port": 4210,
-    "latency_compensation_ms": 0
+    "latency_compensation_ms": 0,
+    "events_dir": "data/lights",
+    "effects": {
+      "flash": {
+        "color": "blanco",
+        "dur_ms": 200
+      },
+      "strobe": {
+        "dur_ms": 1000
+      },
+      "rainbow": {
+        "dur_ms": 4000
+      },
+      "color": {
+        "color": "azul"
+      },
+      "off": {}
+    },
+    "rules": {
+      "Intro": {
+        "fx": "color",
+        "params": {
+          "color": "azul"
+        }
+      },
+      "Up": {
+        "fx": "rainbow",
+        "params": {
+          "dur_ms": 4000
+        }
+      },
+      "Down": {
+        "fx": "color",
+        "params": {
+          "color": "morado"
+        }
+      },
+      "Chorus": {
+        "fx": "strobe",
+        "params": {
+          "dur_ms": 1000
+        }
+      },
+      "Verse": {
+        "fx": "color",
+        "params": {
+          "color": "verde"
+        }
+      },
+      "Bridge": {
+        "fx": "color",
+        "params": {
+          "color": "naranja"
+        }
+      },
+      "Outro": {
+        "fx": "off",
+        "params": {}
+      },
+      "drop": {
+        "fx": "flash",
+        "params": {
+          "color": "blanco",
+          "dur_ms": 200
+        }
+      },
+      "break": {
+        "fx": "color",
+        "params": {
+          "color": "azul"
+        }
+      }
+    }
   }
 }

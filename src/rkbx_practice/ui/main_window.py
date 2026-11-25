@@ -226,7 +226,15 @@ class MainWindow(QMainWindow):
         head.addWidget(self.conn_label, 1)
         self.history_button = QPushButton("Histórico")
         self.history_button.clicked.connect(self._show_history)
+        self.lights_check = QCheckBox("Luces")
+        self.lights_check.setToolTip(f"Enviar efectos al ESP32 ({cfg.lights.esp32_ip}:{cfg.lights.esp32_port})")
+        self.lights_check.setChecked(cfg.lights.enabled)
+        self.lights_check.toggled.connect(self.ctl.set_lights_enabled)
+        self.lights_button = QPushButton("Efectos…")
+        self.lights_button.clicked.connect(self._show_lights_editor)
         head.addWidget(self.rec_button)
+        head.addWidget(self.lights_check)
+        head.addWidget(self.lights_button)
         head.addWidget(self.history_button)
         head.addWidget(self.compact_button)
         root.addLayout(head)
@@ -486,6 +494,12 @@ class MainWindow(QMainWindow):
                 t = self.library.track(d.track_id) if d.track_id else None
                 title = t.display if t else ("(no está en la biblioteca)" if d.track_path else "—")
                 w.update_state(title, d.bpm, t.camelot_str if t else "—", d.fader, d.is_master)
+        lights = self.ctl._lights
+        if lights is not None and lights.engine.enabled and lights.engine.last_sent is not None:
+            ev, t_sent = lights.engine.last_sent
+            if t_sent != getattr(self, "_last_light_shown", None):
+                self._last_light_shown = t_sent
+                self.statusBar().showMessage(f"Luces: {ev.label} → {ev.fx}", 3000)
         if self.ctl.recorder.recording and self._record_started is not None:
             c = self.ctl.recorder.counts()
             secs = int(time.monotonic() - self._record_started)
@@ -514,6 +528,26 @@ class MainWindow(QMainWindow):
         self.compact_button.setText("Ampliar" if self._compact else "Compactar")
         if self._compact:
             self.resize(self.width(), self.minimumSizeHint().height())
+
+    def _show_lights_editor(self) -> None:
+        from .lights_editor import LightsEditor
+        tracks, seen = [], set()
+        snap = self._last_snapshot
+        if snap is not None:
+            for d in snap.decks:
+                t = self.library.track(d.track_id) if d.track_id else None
+                if t is not None and t.id not in seen:
+                    seen.add(t.id)
+                    tracks.append((f"Deck {d.deck}: {t.display}", t))
+        if self.ctl.session is not None:
+            for t, _ in self.ctl.session.entries():
+                if t.id not in seen:
+                    seen.add(t.id)
+                    tracks.append((t.display, t))
+        if not tracks:
+            QMessageBox.information(self, "Luces", "Carga un tema en un deck o genera una sesión primero.")
+            return
+        LightsEditor(self.ctl, tracks, self).exec()
 
     def _show_history(self) -> None:
         HistoryDialog(self.cfg, self).exec()

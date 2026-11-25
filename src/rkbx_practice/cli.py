@@ -281,6 +281,57 @@ def cmd_offsets(cfg, args) -> int:
     return 0
 
 
+def _find_track(lib: InMemoryLibrary, text: str) -> Track:
+    t = lib.track(text)
+    if t is not None:
+        return t
+    low = text.lower()
+    matches = [t for t in lib.all_tracks() if low in t.display.lower()]
+    if not matches:
+        raise SystemExit(f"No se encuentra ningún tema con «{text}»")
+    if len(matches) > 1:
+        _out(f"Varios temas coinciden; uso el primero: {matches[0].display} [id {matches[0].id}]")
+    return matches[0]
+
+
+def cmd_lights_show(cfg, args) -> int:
+    from .app import PracticeController
+    lib = _load(cfg, args)
+    ctl = PracticeController(cfg, lib)
+    track = _find_track(lib, args.track)
+    mgr = ctl.lights
+    if args.regenerate:
+        show = mgr.generate(track)
+        if show is not None:
+            mgr.save(show)
+    else:
+        show = mgr.load_or_generate(track)
+    if show is None:
+        raise SystemExit("No hay análisis de Rekordbox para este tema (¿está analizado?)")
+    analysis = mgr.analyze(track)
+    _out(f"{track.display}  [{mgr.store.path(track.id)}]")
+    for e in show.sorted_events():
+        when = ""
+        if analysis is not None:
+            t = analysis.beat_time(e.beat)
+            when = f"{analysis.bar_beat(e.beat):>7}  {int(t // 60)}:{t % 60:05.2f}" if t is not None else ""
+        from .lights.commands import format_params
+        fx = f"{e.fx} {format_params(e.params)}" if e.fx else "(sin efecto)"
+        _out(f"  beat {e.beat:>5}  {when}  {e.label:<16} {fx}")
+    return 0
+
+
+def cmd_lights_send(cfg, args) -> int:
+    from .lights.commands import LightCommand, parse_params
+    from .lights.udp import UdpSender
+    cmd = LightCommand(args.fx, parse_params(" ".join(args.params)))
+    tx = UdpSender(cfg.lights.esp32_ip, cfg.lights.esp32_port)
+    ok = tx.send(cmd)
+    _out(f"{'Enviado' if ok else 'NO enviado'} a {cfg.lights.esp32_ip}:{cfg.lights.esp32_port}: "
+         f"{cmd.to_json().decode()}")
+    return 0 if ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="rkbx-practice", description="Asistente de práctica para Rekordbox")
     p.add_argument("--config", help="Ruta a config.json")
@@ -329,6 +380,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_history_show)
 
     sub.add_parser("offsets", help="Versión de Rekordbox y offsets disponibles").set_defaults(func=cmd_offsets)
+
+    li = sub.add_parser("lights", help="Luces (ESP32)").add_subparsers(dest="sub", required=True)
+    sp = li.add_parser("show", help="Cambios del tema y efectos asignados (genera el archivo si falta)")
+    sp.add_argument("track", help="ID del tema o parte del título")
+    sp.add_argument("--regenerate", action="store_true", help="Volver a generar desde el análisis")
+    sp.set_defaults(func=cmd_lights_show)
+    sp = li.add_parser("send", help="Envía un efecto al ESP32 (prueba)")
+    sp.add_argument("fx", help="Efecto, p. ej. flash")
+    sp.add_argument("params", nargs="*", help="Parámetros, p. ej. color=rojo dur_ms=200")
+    sp.set_defaults(func=cmd_lights_send)
     return p
 
 

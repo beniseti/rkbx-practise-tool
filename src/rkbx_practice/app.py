@@ -38,6 +38,17 @@ class PracticeController:
                                         cfg.session, decks=cfg.rekordbox.decks)
         self.poller: LivePoller | None = None
         self.unknown_loads: list[TrackLoaded] = []
+        self._lights = None   # LightsManager, se crea al usarlo (abre un socket UDP)
+
+    @property
+    def lights(self):
+        if self._lights is None:
+            from .lights.manager import LightsManager
+            self._lights = LightsManager(self.cfg, self.library, self.grids)
+        return self._lights
+
+    def set_lights_enabled(self, on: bool) -> None:
+        self.lights.engine.enabled = on
 
     def use_demo_source(self, track_s: float = 30.0, blend_s: float = 8.0) -> None:
         """Sustituye la memoria de Rekordbox por la simulación (ver live/demo.py)."""
@@ -120,6 +131,12 @@ class PracticeController:
                 listener.on_status(s)
 
             def on_snapshot(self, s):
+                lights = controller._lights
+                if lights is not None and lights.engine.enabled:
+                    try:
+                        lights.engine.update(s)
+                    except Exception:  # noqa: BLE001  (las luces nunca deben parar el bucle)
+                        log.exception("Error en el motor de luces")
                 listener.on_snapshot(s)
 
             def on_events(self, ev):
@@ -129,6 +146,8 @@ class PracticeController:
         enricher = SnapshotEnricher(self.library, self.cfg.live.position_jump_tolerance_s,
                                     empty_without_bpm=self.cfg.live.empty_deck_without_bpm)
         pipeline = LivePipeline(self.cfg, grids=self.grids.get_nowait, prefetch=self.grids.prefetch)
+        if self.cfg.lights.enabled:
+            self.set_lights_enabled(True)
         self.poller = LivePoller(self.cfg, self.source_factory, enricher, pipeline, _Tee())
         self.poller.start()
         return self.poller
