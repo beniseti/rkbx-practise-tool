@@ -296,10 +296,14 @@ class MainWindow(QMainWindow):
         self.table.setToolTip("Verde: cargado (clic para destachar) · Amarillo: siguiente · "
                               "Naranja: comodín · Rojo: te lo saltaste")
         root.addWidget(self.table, 1)
+        self.lights_status = QLabel("")
+        self.lights_status.setProperty("role", "dim")
+        self.lights_status.setWordWrap(True)
         self.info_label = QLabel("")
         self.info_label.setWordWrap(True)
         self.info_label.setStyleSheet("color: #ff9800;")
         root.addWidget(self.info_label)
+        root.addWidget(self.lights_status)
 
         # --- decks ----------------------------------------------------
         decks_box = QWidget()
@@ -499,6 +503,18 @@ class MainWindow(QMainWindow):
                 title = t.display if t else ("(no está en la biblioteca)" if d.track_path else "—")
                 w.update_state(title, d.bpm, t.camelot_str if t else "—", d.fader, d.is_master)
         lights = self.ctl._lights
+        if lights is not None:
+            status = lights.engine.status
+            snap_ = self._last_snapshot
+            lead = lights.engine.lead_deck
+            if snap_ is not None and lead is not None:
+                d_ = snap_.deck(lead)
+                if d_ is not None and d_.track_id in lights.problems:
+                    status = f"Deck {lead}: sin luces: {lights.problems[d_.track_id]}"
+            if lights.sender.errors:
+                status += f" · {lights.sender.errors} errores de envío"
+            self.lights_check.setToolTip(status)
+            self.lights_status.setText(status if lights.engine.enabled else "")
         if lights is not None and lights.engine.enabled and lights.engine.last_sent is not None:
             ev, t_sent = lights.engine.last_sent
             if t_sent != getattr(self, "_last_light_shown", None):

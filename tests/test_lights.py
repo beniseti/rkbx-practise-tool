@@ -231,3 +231,17 @@ def test_sender_multiple_targets():
     assert json.loads(rx2.recvfrom(100)[0]) == {"fx": "off"}
     for s in (rx1, rx2, tx):
         s.close()
+
+
+def test_engine_status_explains_why_nothing_is_sent():
+    eng, sent = make_engine()
+    eng.enabled = False
+    eng.update(snap(0, [deck(1, fader=1.0, track="A", pos=0)]))
+    assert "desactivadas" in eng.status
+    eng.enabled = True
+    eng.update(snap(0, [deck(1, fader=0.0, track="A", pos=0), deck(2, fader=0.0, track="B")]))
+    assert "faders" in eng.status
+    eng.update(snap(0.1, [deck(1, fader=0.0, track="A", pos=0), deck(2, fader=1.0, track="B", pos=0)]))
+    assert "preparando" in eng.status                      # el tema B no tiene archivo
+    play(eng, 1.0, 2.0, pos0=0.0)
+    assert "próximo: Chorus → strobe" in eng.status

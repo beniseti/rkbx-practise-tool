@@ -333,6 +333,53 @@ def cmd_lights_send(cfg, args) -> int:
     return 0 if ok else 1
 
 
+def cmd_lights_debug(cfg, args) -> int:
+    """Lectura en vivo + motor de luces, imprimiendo por qué se envía o no cada efecto."""
+    from .app import PracticeController
+    lib = _load(cfg, args)
+    ctl = PracticeController(cfg, lib)
+    if args.demo:
+        ctl.use_demo_source()
+    mgr = ctl.lights
+    if args.simulator:
+        mgr.sender.add_target("127.0.0.1", cfg.lights.simulator_port)
+    ctl.set_lights_enabled(True)
+
+    class Listener:
+        def on_status(self, s):
+            _out(f"[{s.mode.label_es}] Rekordbox {s.version or '?'} — {s.message}")
+
+        def on_snapshot(self, s):
+            pass
+
+        def on_events(self, ev):
+            pass
+
+    ctl.start_live(Listener())
+    targets = ", ".join(f"{h}:{p}" for h, p in mgr.sender.targets)
+    _out(f"Enviando a: {targets}. Ctrl+C para salir.")
+    last_status, last_sent = None, None
+    try:
+        while True:
+            time.sleep(0.2)
+            eng = mgr.engine
+            status = eng.status
+            for tid, why in mgr.problems.items():
+                status += f" | {lib.track(tid).display if lib.track(tid) else tid}: {why}"
+            if status != last_status:
+                _out(f"  {status}")
+                last_status = status
+            if eng.last_sent is not None and eng.last_sent != last_sent:
+                last_sent = eng.last_sent
+                ev = last_sent[0]
+                _out(f"  → ENVIADO: {ev.label} → {ev.fx} {ev.params}")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        ctl.stop_live()
+    return 0
+
+
 def cmd_lights_simulate(cfg, args) -> int:
     import webbrowser
     from .lights.simulator import LightSimulator
@@ -418,6 +465,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("params", nargs="*", help="Parámetros, p. ej. color=rojo dur_ms=200")
     sp.add_argument("--simulator", action="store_true", help="Enviar al simulador local en vez de al ESP32")
     sp.set_defaults(func=cmd_lights_send)
+    sp = li.add_parser("debug", help="En vivo: muestra por qué se envían o no los efectos")
+    sp.add_argument("--simulator", action="store_true", help="Enviar también al simulador local")
+    sp.set_defaults(func=cmd_lights_debug)
     sp = li.add_parser("simulate", help="Simulador de luces en el navegador (hace de ESP32)")
     sp.add_argument("--host", default="127.0.0.1", help="IP en la que escucha UDP (0.0.0.0 = toda la red)")
     sp.add_argument("--udp-port", type=int, help="Puerto UDP (por defecto lights.simulator_port)")

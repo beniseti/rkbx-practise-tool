@@ -24,6 +24,19 @@ log = logging.getLogger(__name__)
 PAGE = Path(__file__).with_name("simulator.html")
 
 
+class _QuietServer(ThreadingHTTPServer):
+    """No imprime trazas cuando el navegador cierra o recarga la conexión (WinError 10053/10054)."""
+
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        import sys
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
+
+
 class LightSimulator:
     def __init__(self, udp_host: str = "127.0.0.1", udp_port: int = 4211,
                  http_host: str = "127.0.0.1", http_port: int = 8765, leds: int = 60,
@@ -146,8 +159,7 @@ class LightSimulator:
         self._udp.bind(self.udp_addr)
         self._udp.settimeout(0.5)
         self.udp_addr = self._udp.getsockname()
-        self._http = ThreadingHTTPServer(self.http_addr, self._handler())
-        self._http.daemon_threads = True
+        self._http = _QuietServer(self.http_addr, self._handler())
         self.http_addr = self._http.server_address[:2]
         threading.Thread(target=self._udp_loop, name="sim-udp", daemon=True).start()
         threading.Thread(target=self._http.serve_forever, name="sim-http", daemon=True).start()

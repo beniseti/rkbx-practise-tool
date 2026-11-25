@@ -32,6 +32,7 @@ class LightsManager:
         self.analyzer = analyzer
         self._shows: dict[str, LightShow | None] = {}
         self._pending: set[str] = set()
+        self.problems: dict[str, str] = {}   # track_id -> por qué no hay archivo de luces
         self._lock = threading.Lock()
         self.sender = sender or UdpSender(cfg.lights.esp32_ip, cfg.lights.esp32_port)
         if cfg.lights.send_to_simulator and hasattr(self.sender, "add_target"):
@@ -65,6 +66,12 @@ class LightsManager:
             show = self.generate(track)
             if show is not None and save:
                 self.store.save(show)
+            if show is None:
+                path = self.anlz_path(track)
+                self.problems[track.id] = (
+                    "el tema no tiene ruta de análisis en master.db" if not path else
+                    f"no se pudo leer el análisis de Rekordbox ({path})")
+                log.warning("Luces: %s: %s", track.display, self.problems[track.id])
         with self._lock:
             self._shows[track.id] = show
         return show
