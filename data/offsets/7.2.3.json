@@ -1,0 +1,32 @@
+{
+  "version": "7.2.3",
+  "module": "rekordbox.exe",
+  "pointer_size": 8,
+  "decks": {
+    "1": {
+      "bpm": {
+        "chain": [
+          "0x58d38c8",
+          "0x0",
+          "0x2b0",
+          "0x1a0"
+        ],
+        "type": "f32"
+      },
+      "fader": {
+        "chain": [
+          "0x5a57720",
+          "0x338",
+          "0x2a8",
+          "0x494"
+        ],
+        "type": "f32",
+        "map": [
+          0.0,
+          1.0
+        ]
+      }
+    }
+  },
+  "global": {}
+}
