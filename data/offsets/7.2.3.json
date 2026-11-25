@@ -67,7 +67,7 @@
           "0x1a0"
         ],
         "type": "f32",
-        "_note": "HIPÓTESIS: como el deck 1 pero con 0x8 en el segundo nivel (lista de decks). Comprobar con `live`."
+        "_note": "Como el deck 1 con 0x8 en el segundo nivel (lista de decks). Confirmado con `live`."
       }
     }
   },
