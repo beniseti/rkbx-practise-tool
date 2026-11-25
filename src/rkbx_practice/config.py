@@ -97,6 +97,10 @@ class LightsConfig:
     esp32_port: int = 4210
     latency_compensation_ms: int = 0
     events_dir: str = "data/lights"
+    simulator_port: int = 4211        # UDP del simulador (127.0.0.1)
+    simulator_http_port: int = 8765   # página http://127.0.0.1:8765/
+    simulator_leds: int = 60
+    send_to_simulator: bool = False   # además del ESP32, enviar al simulador local
     # Catálogo de efectos del ESP32 con sus parámetros por defecto (cada uno los suyos).
     effects: dict[str, dict] = field(default_factory=lambda: {
         "flash": {"color": "blanco", "dur_ms": 200},

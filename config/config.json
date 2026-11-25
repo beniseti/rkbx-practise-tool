@@ -62,6 +62,10 @@
     "esp32_port": 4210,
     "latency_compensation_ms": 0,
     "events_dir": "data/lights",
+    "send_to_simulator": false,
+    "simulator_port": 4211,
+    "simulator_http_port": 8765,
+    "simulator_leds": 60,
     "effects": {
       "flash": {
         "color": "blanco",

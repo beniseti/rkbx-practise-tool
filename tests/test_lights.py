@@ -170,3 +170,64 @@ def test_manager_generates_in_background(library, tmp_path):
     show = mgr.cached_show("1001")
     assert show is not None and show.track_id == "1001"
     assert ShowStore(tmp_path).load("1001") is not None
+
+
+def _read_sse(resp, n, timeout=3.0):
+    msgs, buf = [], b""
+    deadline = time.time() + timeout
+    while len(msgs) < n and time.time() < deadline:
+        line = resp.fp.readline()
+        if line.startswith(b"data: "):
+            msgs.append(json.loads(line[6:]))
+    return msgs
+
+
+def test_simulator_udp_to_browser_stream():
+    import http.client
+    import threading
+    from rkbx_practice.lights.simulator import LightSimulator
+    sim = LightSimulator(udp_port=0, http_port=0, effects={"flash": {"dur_ms": 200}})
+    sim.start()
+    try:
+        host, port = sim.http_addr
+        c = http.client.HTTPConnection(host, port, timeout=5)
+        c.request("GET", "/")
+        r = c.getresponse()
+        assert r.status == 200 and b"Simulador de luces" in r.read()
+        c.request("GET", "/config")
+        cfg = json.loads(c.getresponse().read())
+        assert cfg["effects"] == {"flash": {"dur_ms": 200}}
+
+        sse = http.client.HTTPConnection(host, port, timeout=5)
+        sse.request("GET", "/events")
+        resp = sse.getresponse()
+        assert resp.getheader("Content-Type") == "text/event-stream"
+        for _ in range(50):                       # esperar a que el cliente quede suscrito
+            if sim._clients:
+                break
+            time.sleep(0.02)
+        tx = UdpSender("127.0.0.1", sim.udp_addr[1])
+        tx.send(LightCommand("flash", {"color": "rojo", "dur_ms": 200}))
+        c.request("POST", "/send", body=json.dumps({"fx": "strobe", "dur_ms": 500}),
+                  headers={"Content-Type": "application/json"})
+        assert c.getresponse().status == 200
+        msgs = _read_sse(resp, 2)
+        assert [m["cmd"]["fx"] for m in msgs] == ["flash", "strobe"]
+        assert msgs[0]["origin"] == "udp" and msgs[1]["origin"] == "prueba"
+        tx.close()
+    finally:
+        sim.stop()
+
+
+def test_sender_multiple_targets():
+    rx1, rx2 = (socket.socket(socket.AF_INET, socket.SOCK_DGRAM) for _ in range(2))
+    for rx in (rx1, rx2):
+        rx.bind(("127.0.0.1", 0))
+        rx.settimeout(2)
+    tx = UdpSender("127.0.0.1", rx1.getsockname()[1])
+    tx.add_target("127.0.0.1", rx2.getsockname()[1])
+    tx.send(LightCommand("off"))
+    assert json.loads(rx1.recvfrom(100)[0]) == {"fx": "off"}
+    assert json.loads(rx2.recvfrom(100)[0]) == {"fx": "off"}
+    for s in (rx1, rx2, tx):
+        s.close()

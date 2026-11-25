@@ -232,9 +232,13 @@ class MainWindow(QMainWindow):
         self.lights_check.toggled.connect(self.ctl.set_lights_enabled)
         self.lights_button = QPushButton("Efectos…")
         self.lights_button.clicked.connect(self._show_lights_editor)
+        self.sim_button = QPushButton("Simulador")
+        self.sim_button.setToolTip("Abre el simulador de luces en el navegador (hace de ESP32)")
+        self.sim_button.clicked.connect(self._open_simulator)
         head.addWidget(self.rec_button)
         head.addWidget(self.lights_check)
         head.addWidget(self.lights_button)
+        head.addWidget(self.sim_button)
         head.addWidget(self.history_button)
         head.addWidget(self.compact_button)
         root.addLayout(head)
@@ -529,6 +533,17 @@ class MainWindow(QMainWindow):
         if self._compact:
             self.resize(self.width(), self.minimumSizeHint().height())
 
+    def _open_simulator(self) -> None:
+        import webbrowser
+        try:
+            url = self.ctl.lights.start_simulator()
+        except OSError as exc:
+            QMessageBox.warning(self, "Simulador", f"No se pudo abrir el simulador: {exc}\n"
+                                "¿Hay otro simulador en marcha (python -m rkbx_practice lights simulate)?")
+            return
+        webbrowser.open(url)
+        self.statusBar().showMessage(f"Simulador en {url} · activa «Luces» para enviarle los efectos", 8000)
+
     def _show_lights_editor(self) -> None:
         from .lights_editor import LightsEditor
         tracks, seen = [], set()
@@ -564,6 +579,8 @@ class MainWindow(QMainWindow):
             path = self.ctl.stop_recording()
             log.info("Grabación guardada al cerrar: %s", path)
         self.ctl.stop_live()
+        if self.ctl._lights is not None:
+            self.ctl._lights.stop_simulator()
         super().closeEvent(event)
 
 

@@ -34,6 +34,9 @@ class LightsManager:
         self._pending: set[str] = set()
         self._lock = threading.Lock()
         self.sender = sender or UdpSender(cfg.lights.esp32_ip, cfg.lights.esp32_port)
+        if cfg.lights.send_to_simulator and hasattr(self.sender, "add_target"):
+            self.sender.add_target("127.0.0.1", cfg.lights.simulator_port)
+        self.simulator = None
         self.engine = LightsEngine(
             cfg.lights, cfg.mixer, cfg.detection, shows=self.cached_show,
             grids=grids.get_nowait, send=self.sender.send,
@@ -71,6 +74,26 @@ class LightsManager:
         with self._lock:
             self._shows[show.track_id] = show
         return path
+
+    # --- simulador en el navegador -----------------------------------
+    def start_simulator(self) -> str:
+        """Arranca el simulador dentro de la app y envía también a él. Devuelve la URL."""
+        from .simulator import LightSimulator
+        if self.simulator is None:
+            lc = self.cfg.lights
+            self.simulator = LightSimulator(udp_port=lc.simulator_port, http_port=lc.simulator_http_port,
+                                            leds=lc.simulator_leds, effects=lc.effects)
+            self.simulator.start()
+            if hasattr(self.sender, "add_target"):
+                self.sender.add_target("127.0.0.1", self.simulator.udp_addr[1])
+        return self.simulator.url
+
+    def stop_simulator(self) -> None:
+        if self.simulator is not None:
+            if hasattr(self.sender, "remove_target"):
+                self.sender.remove_target("127.0.0.1", self.simulator.udp_addr[1])
+            self.simulator.stop()
+            self.simulator = None
 
     # --- para el bucle en vivo (sin bloquear) -------------------------
     def cached_show(self, track_id: str | None) -> LightShow | None:

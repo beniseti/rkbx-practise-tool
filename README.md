@@ -73,6 +73,19 @@ python -m rkbx_practice --library-json data/demo_library.json --demo live --sess
 `--demo` simula dos decks que pinchan las sugerencias (cargas, transiciones de
 8 s con bass swap) para ver la ventana y las detecciones funcionando.
 
+## Luces
+
+- **Efectos…** en la ventana: análisis de cada tema (frases y cambios de energía) en una línea de
+  tiempo y asignación de efectos; se guardan en `data/lights/<id>.json`.
+- **Luces**: activa el envío en directo al ESP32 (`lights.esp32_ip:esp32_port`).
+- **Simulador**: abre en el navegador una tira de LEDs que hace de ESP32.
+
+```powershell
+python -m rkbx_practice lights show "Welcome to Hell"
+python -m rkbx_practice lights simulate
+python -m rkbx_practice lights send flash color=rojo dur_ms=200 --simulator
+```
+
 ## Offsets (lectura en vivo)
 
 Las direcciones de memoria cambian con cada versión de Rekordbox y van en

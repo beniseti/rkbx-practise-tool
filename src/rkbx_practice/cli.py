@@ -325,11 +325,38 @@ def cmd_lights_send(cfg, args) -> int:
     from .lights.commands import LightCommand, parse_params
     from .lights.udp import UdpSender
     cmd = LightCommand(args.fx, parse_params(" ".join(args.params)))
-    tx = UdpSender(cfg.lights.esp32_ip, cfg.lights.esp32_port)
+    host, port = (("127.0.0.1", cfg.lights.simulator_port) if args.simulator
+                  else (cfg.lights.esp32_ip, cfg.lights.esp32_port))
+    tx = UdpSender(host, port)
     ok = tx.send(cmd)
-    _out(f"{'Enviado' if ok else 'NO enviado'} a {cfg.lights.esp32_ip}:{cfg.lights.esp32_port}: "
-         f"{cmd.to_json().decode()}")
+    _out(f"{'Enviado' if ok else 'NO enviado'} a {host}:{port}: {cmd.to_json().decode()}")
     return 0 if ok else 1
+
+
+def cmd_lights_simulate(cfg, args) -> int:
+    import webbrowser
+    from .lights.simulator import LightSimulator
+    lc = cfg.lights
+    sim = LightSimulator(udp_host=args.host, udp_port=args.udp_port or lc.simulator_port,
+                         http_port=args.http_port or lc.simulator_http_port,
+                         leds=args.leds or lc.simulator_leds, effects=lc.effects)
+    try:
+        sim.start()
+    except OSError as exc:
+        raise SystemExit(f"No se pudo abrir el simulador ({exc}). ¿Ya hay otro en marcha?") from exc
+    _out(f"Simulador en {sim.url}  ·  escuchando UDP en {sim.udp_addr[0]}:{sim.udp_addr[1]}")
+    _out("Para que la app le envíe los efectos: en config.json, lights.send_to_simulator = true "
+         "(o el botón «Simulador» de la ventana). Ctrl+C para salir.")
+    if not args.no_browser:
+        webbrowser.open(sim.url)
+    try:
+        while True:
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sim.stop()
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -389,7 +416,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp = li.add_parser("send", help="Envía un efecto al ESP32 (prueba)")
     sp.add_argument("fx", help="Efecto, p. ej. flash")
     sp.add_argument("params", nargs="*", help="Parámetros, p. ej. color=rojo dur_ms=200")
+    sp.add_argument("--simulator", action="store_true", help="Enviar al simulador local en vez de al ESP32")
     sp.set_defaults(func=cmd_lights_send)
+    sp = li.add_parser("simulate", help="Simulador de luces en el navegador (hace de ESP32)")
+    sp.add_argument("--host", default="127.0.0.1", help="IP en la que escucha UDP (0.0.0.0 = toda la red)")
+    sp.add_argument("--udp-port", type=int, help="Puerto UDP (por defecto lights.simulator_port)")
+    sp.add_argument("--http-port", type=int, help="Puerto de la página (por defecto lights.simulator_http_port)")
+    sp.add_argument("--leds", type=int, help="Número de LEDs a dibujar")
+    sp.add_argument("--no-browser", action="store_true", help="No abrir el navegador")
+    sp.set_defaults(func=cmd_lights_simulate)
     return p
 
 

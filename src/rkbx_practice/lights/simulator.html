@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador de luces</title>
+<style>
+  :root {
+    --bg: #101010; --panel: #1b1b1b; --panel2: #242424; --border: #333;
+    --text: #e6e6e6; --dim: #8c8c8c; --accent: #2a8cff; --ok: #4caf50; --bad: #e53935;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 13px "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+           background: var(--panel2); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); display: inline-block; }
+  .dot.on { background: var(--ok); }
+  .dim { color: var(--dim); }
+  main { padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 320px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .stage { background: #000; border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+           position: relative; }
+  #room { position: absolute; inset: 0; transition: background 60ms linear; opacity: .35; }
+  canvas { display: block; width: 100%; height: 220px; position: relative; }
+  .now { display: flex; gap: 16px; padding: 8px 12px; border-top: 1px solid var(--border);
+         background: var(--panel); position: relative; flex-wrap: wrap; }
+  .now b { color: #fff; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 10px; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim);
+              margin: 0 0 8px; font-weight: 600; }
+  #log { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto;
+         font-family: Consolas, "SF Mono", monospace; font-size: 12px; }
+  #log li { padding: 3px 4px; border-bottom: 1px solid #222; display: flex; gap: 8px; }
+  #log li .t { color: var(--dim); flex: none; }
+  #log li .fx { color: #ffe14d; flex: none; min-width: 58px; }
+  #log li.test .fx { color: #7fb0ff; }
+  #log li.err .fx { color: var(--bad); }
+  .tests { display: grid; gap: 6px; }
+  .tests .row { display: grid; grid-template-columns: 80px 1fr 56px; gap: 6px; align-items: center; }
+  input, button { font: inherit; color: var(--text); background: var(--panel2);
+                  border: 1px solid var(--border); border-radius: 3px; padding: 4px 6px; min-width: 0; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  .opts { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Simulador de luces</h1>
+  <span><span class="dot" id="dot"></span> <span id="status" class="dim">conectando…</span></span>
+  <span class="dim" id="udp"></span>
+</header>
+<main>
+  <section>
+    <div class="stage">
+      <div id="room"></div>
+      <canvas id="strip"></canvas>
+      <div class="now">
+        <span>Efecto: <b id="nowFx">—</b></span>
+        <span>Base: <b id="nowBase">apagado</b></span>
+        <span class="dim" id="count">0 comandos</span>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h2>Probar efectos</h2>
+      <div class="tests" id="tests"></div>
+      <div class="opts">
+        <label>LEDs <input id="leds" type="number" min="4" max="600" value="60" style="width:70px"></label>
+        <label><input id="layout" type="checkbox"> en anillo</label>
+      </div>
+    </div>
+  </section>
+  <aside class="panel">
+    <h2>Comandos recibidos</h2>
+    <ul id="log"></ul>
+  </aside>
+</main>
+<script>
+"use strict";
+// --- Colores (nombres en español e inglés, o #rrggbb / [r,g,b]) -----------------
+const NAMED = {
+  rojo:[255,0,0], red:[255,0,0], verde:[0,255,0], green:[0,255,0], azul:[0,80,255], blue:[0,80,255],
+  blanco:[255,255,255], white:[255,255,255], amarillo:[255,220,0], yellow:[255,220,0],
+  naranja:[255,120,0], orange:[255,120,0], morado:[150,0,255], purple:[150,0,255],
+  violeta:[150,0,255], rosa:[255,60,160], pink:[255,60,160], cian:[0,230,255], cyan:[0,230,255],
+  magenta:[255,0,255], negro:[0,0,0], black:[0,0,0]
+};
+function parseColor(c, dflt) {
+  if (Array.isArray(c) && c.length >= 3) return c.slice(0, 3).map(Number);
+  if (typeof c === "string") {
+    const k = c.trim().toLowerCase();
+    if (NAMED[k]) return NAMED[k];
+    const m = /^#?([0-9a-f]{6})$/i.exec(k);
+    if (m) { const n = parseInt(m[1], 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+  }
+  return dflt;
+}
+const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+const scale = (a, k) => a.map(v => v * k);
+function hsv(h, s, v) {
+  const i = Math.floor(h * 6), f = h * 6 - i, p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+  const r = [[v,t,p],[q,v,p],[p,v,t],[p,q,v],[t,p,v],[v,p,q]][((i % 6) + 6) % 6];
+  return r.map(x => x * 255);
+}
+
+// --- Estado de las luces -------------------------------------------------
+// base: color permanente (efectos "color"/"off"). overlay: efecto temporal (flash, strobe, rainbow…).
+const S = { base: [0,0,0], baseFrom: [0,0,0], baseAt: 0, overlay: null, count: 0 };
+
+function apply(cmd) {
+  const now = performance.now();
+  const fx = String(cmd.fx || "?").toLowerCase();
+  const dur = Number(cmd.dur_ms ?? cmd.duration_ms ?? 0);
+  const setBase = (c) => { S.baseFrom = currentBase(now); S.base = c; S.baseAt = now; };
+  switch (fx) {
+    case "color": setBase(parseColor(cmd.color, [0,80,255])); S.overlay = null; break;
+    case "off": setBase([0,0,0]); S.overlay = null; break;
+    case "flash": S.overlay = { fx, start: now, dur: dur || 200, color: parseColor(cmd.color, [255,255,255]) }; break;
+    case "strobe": S.overlay = { fx, start: now, dur: dur || 1000, color: parseColor(cmd.color, [255,255,255]),
+                                 hz: Number(cmd.hz || 12) }; break;
+    case "rainbow": S.overlay = { fx, start: now, dur: dur || 4000, speed: Number(cmd.speed || 0.5) }; break;
+    default: S.overlay = { fx: "unknown", start: now, dur: dur || 600, color: [160, 0, 255] };
+  }
+  document.getElementById("nowFx").textContent = fx;
+  document.getElementById("nowBase").textContent =
+    S.base.every(v => v === 0) ? "apagado" : `rgb(${S.base.map(Math.round).join(", ")})`;
+}
+
+function currentBase(now) {
+  const k = Math.min(1, (now - S.baseAt) / 150);   // fundido de 150 ms entre colores base
+  return mix(S.baseFrom, S.base, k);
+}
+
+function ledColors(now, n) {
+  const base = currentBase(now);
+  const out = new Array(n).fill(base);
+  const o = S.overlay;
+  if (!o) return out;
+  const p = (now - o.start) / o.dur;
+  if (p >= 1) { S.overlay = null; document.getElementById("nowFx").textContent = "—"; return out; }
+  if (o.fx === "flash") return out.map(() => mix(base, o.color, Math.pow(1 - p, 1.6)));
+  if (o.fx === "strobe") {
+    const on = Math.floor((now - o.start) / (1000 / o.hz / 2)) % 2 === 0;
+    return out.map(() => on ? o.color : scale(base, 0.15));
+  }
+  if (o.fx === "rainbow") {
+    const t = (now - o.start) / 1000 * o.speed;
+    const fade = Math.min(1, (1 - p) * 6);           // vuelve a la base al final
+    return out.map((_, i) => mix(base, hsv((i / n + t) % 1, 1, 1), fade));
+  }
+  return out.map(() => mix(base, o.color, Math.sin(p * Math.PI)));
+}
+
+// --- Dibujo ----------------------------------------------------------------
+const canvas = document.getElementById("strip"), ctx = canvas.getContext("2d");
+const room = document.getElementById("room");
+function draw(now) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const n = Math.max(4, Math.min(600, Number(document.getElementById("leds").value) || 60));
+  const cols = ledColors(now, n);
+  const ring = document.getElementById("layout").checked;
+  let avg = [0,0,0];
+  cols.forEach((c, i) => {
+    let x, y;
+    if (ring) {
+      const a = i / n * Math.PI * 2 - Math.PI / 2, r = Math.min(w, h) * 0.38;
+      x = w / 2 + Math.cos(a) * r; y = h / 2 + Math.sin(a) * r;
+    } else {
+      x = (i + 0.5) / n * w; y = h / 2;
+    }
+    const size = ring ? Math.max(3, Math.min(10, 600 / n)) : Math.max(2, Math.min(10, w / n * 0.38));
+    const rgb = `rgb(${c.map(v => Math.round(Math.max(0, Math.min(255, v)))).join(",")})`;
+    const lit = Math.max(...c) > 8;
+    ctx.shadowBlur = lit ? size * 3 : 0;
+    ctx.shadowColor = rgb;
+    ctx.fillStyle = lit ? rgb : "#1a1a1a";
+    ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.fill();
+    avg = avg.map((v, k) => v + c[k] / n);
+  });
+  ctx.shadowBlur = 0;
+  room.style.background = `radial-gradient(ellipse at center, rgb(${avg.map(Math.round).join(",")}) 0%, transparent 70%)`;
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+// --- Registro --------------------------------------------------------------
+function logCmd(msg) {
+  const li = document.createElement("li");
+  const cmd = msg.cmd || {};
+  if (msg.origin === "prueba") li.className = "test";
+  if (cmd.error) li.className = "err";
+  const t = new Date((msg.t || Date.now() / 1000) * 1000).toLocaleTimeString();
+  const { fx, ...rest } = cmd;
+  li.innerHTML = `<span class="t"></span><span class="fx"></span><span class="p"></span>`;
+  li.querySelector(".t").textContent = t;
+  li.querySelector(".fx").textContent = fx ?? "?";
+  li.querySelector(".p").textContent = Object.entries(rest).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join(" ");
+  const log = document.getElementById("log");
+  log.prepend(li);
+  while (log.children.length > 200) log.lastChild.remove();
+  S.count++;
+  document.getElementById("count").textContent = `${S.count} comandos`;
+}
+
+// --- Conexión con el servidor (Server-Sent Events) -----------------------------
+function connect() {
+  const es = new EventSource("/events");
+  es.onopen = () => { document.getElementById("dot").classList.add("on");
+                      document.getElementById("status").textContent = "conectado"; };
+  es.onerror = () => { document.getElementById("dot").classList.remove("on");
+                       document.getElementById("status").textContent = "sin conexión (¿está el simulador en marcha?)"; };
+  es.onmessage = (e) => { const msg = JSON.parse(e.data); logCmd(msg); if (!msg.cmd.error) apply(msg.cmd); };
+}
+connect();
+
+// --- Botones de prueba -----------------------------------------------------------
+function paramsText(obj) { return Object.entries(obj || {}).map(([k, v]) => `${k}=${v}`).join(" "); }
+function parseParams(text) {
+  const out = {};
+  text.replace(/,/g, " ").split(/\s+/).filter(Boolean).forEach(part => {
+    const i = part.indexOf("="); if (i < 1) return;
+    const k = part.slice(0, i), v = part.slice(i + 1);
+    out[k] = v !== "" && !isNaN(Number(v)) ? Number(v) : v;
+  });
+  return out;
+}
+fetch("/config").then(r => r.json()).then(cfg => {
+  document.getElementById("leds").value = cfg.leds || 60;
+  document.getElementById("udp").textContent = `UDP ${cfg.udp}`;
+  const effects = Object.keys(cfg.effects || {}).length ? cfg.effects
+    : { flash: { color: "blanco", dur_ms: 200 }, strobe: { dur_ms: 1000 }, rainbow: { dur_ms: 4000 },
+        color: { color: "azul" }, off: {} };
+  const box = document.getElementById("tests");
+  Object.entries(effects).forEach(([fx, params]) => {
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<b></b><input><button>Enviar</button>`;
+    row.querySelector("b").textContent = fx;
+    const input = row.querySelector("input"); input.value = paramsText(params);
+    row.querySelector("button").onclick = () => fetch("/send", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fx, ...parseParams(input.value) }) });
+    box.appendChild(row);
+  });
+});
+</script>
+</body>
+</html>
