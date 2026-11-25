@@ -10,3 +10,4 @@ dist/
 history/*.json
 !history/.gitkeep
 tools/offset_detect/out/
+data/offsets/*.candidates.json

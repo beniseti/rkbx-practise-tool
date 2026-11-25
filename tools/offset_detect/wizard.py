@@ -108,20 +108,36 @@ def _pick(console: Console, mem: Memory, cands: list[Candidates], label: str) ->
 # ---------------------------------------------------------------------------
 # Pasos por campo
 # ---------------------------------------------------------------------------
-def _range_picks(console: Console, cands: list[Candidates], label: str, limit: int = 10):
+def _range_picks(console: Console, cands: list[Candidates], label: str, limit: int = 10,
+                 mem: Memory | None = None):
     """Todos los candidatos (hasta `limit`) de un control continuo, con su propio `map`.
 
-    Se guardan las cadenas de todos: tras reiniciar, --recheck se queda con las que funcionan.
+    Primero los que están DENTRO del módulo (variables globales: estables entre arranques sin
+    cadena de punteros; así se encontró el fader en 7.2.3). Se guardan las cadenas de todos:
+    tras reiniciar, --recheck se queda con las que funcionan.
     """
-    out = []
+    def is_static(a: int) -> bool:
+        return mem is not None and mem.module_base <= a < mem.module_base + mem.module_size
+
+    f64_addrs = {int(a) for c in cands if c.dtype == "f64" for a in c.addresses.tolist()}
+    items = []
     for c in cands:
         for i, a in enumerate(c.addresses.tolist()):
-            lo, hi = float(c.saved["lo"][i]), float(c.saved["hi"][i])
-            mid = float(c.saved["mid"][i]) if "mid" in c.saved else None
-            rel = (mid - lo) / (hi - lo) if mid is not None and hi != lo else None
-            console.say(f"    candidato {label} 0x{int(a):X} ({c.dtype}): mín {lo:.4g} · máx {hi:.4g}"
-                        + (f" · a la mitad {mid:.4g} ({rel:.0%} del rango)" if rel is not None else ""))
-            out.append((int(a), c.dtype, {"map": [lo, hi]}))
+            # Un f32 en la mitad alta de un f64 candidato es el mismo dato: se omite.
+            if c.dtype == "f32" and (int(a) - 4) in f64_addrs:
+                continue
+            items.append((not is_static(int(a)), c, i, a))
+    items.sort(key=lambda x: x[0])
+    out = []
+    for not_static, c, i, a in items:
+        lo, hi = float(c.saved["lo"][i]), float(c.saved["hi"][i])
+        mid = float(c.saved["mid"][i]) if "mid" in c.saved else None
+        rel = (mid - lo) / (hi - lo) if mid is not None and hi != lo else None
+        console.say(f"    candidato {label} 0x{int(a):X} ({c.dtype})"
+                    + (" [GLOBAL, estable]" if not not_static else "")
+                    + f": mín {lo:.4g} · máx {hi:.4g}"
+                    + (f" · a la mitad {mid:.4g} ({rel:.0%} del rango)" if rel is not None else ""))
+        out.append((int(a), c.dtype, {"map": [lo, hi]}))
     if not out:
         console.say(f"    ✗ No se encontró {label}.")
     elif len(out) > limit:
@@ -409,14 +425,14 @@ def run(mem: Memory, version: str, decks: list[int], fields: list[str], console:
                 console, mem, "fader", f"Baja el fader de canal del deck {deck} del todo",
                 f"Sube el fader de canal del deck {deck} del todo",
                 f"Pon el fader de canal del deck {deck} más o menos a la mitad")
-            for addr, dt, ex in _range_picks(console, cands, "fader"):
+            for addr, dt, ex in _range_picks(console, cands, "fader", mem=mem):
                 found.append(Found("fader", deck, addr, dt, ex))
         if "eq_low" in fields:
             cands, extra = scan_range_control(
                 console, mem, "eq_low", f"Gira el EQ de graves (LOW) del deck {deck} al mínimo",
                 f"Gira el EQ de graves (LOW) del deck {deck} al máximo",
                 f"Pon el EQ de graves (LOW) del deck {deck} en el centro")
-            for addr, dt, ex in _range_picks(console, cands, "EQ de graves"):
+            for addr, dt, ex in _range_picks(console, cands, "EQ de graves", mem=mem):
                 found.append(Found("eq_low", deck, addr, dt, ex))
     if "is_master" in fields and len(decks) > 1:
         console.say("\n===== DECK MASTER =====")
@@ -443,7 +459,7 @@ def run(mem: Memory, version: str, decks: list[int], fields: list[str], console:
         cands, extra = scan_range_control(
             console, mem, "crossfader", "Lleva el crossfader del todo a la IZQUIERDA (lado A)",
             "Lleva el crossfader del todo a la DERECHA (lado B)", "Pon el crossfader en el centro")
-        for addr, dt, ex in _range_picks(console, cands, "crossfader"):
+        for addr, dt, ex in _range_picks(console, cands, "crossfader", mem=mem):
             found.append(Found("crossfader", None, addr, dt, ex))
 
     console.say("\n===== CADENAS DE PUNTEROS =====\n(puede tardar un poco)")

@@ -15,16 +15,14 @@
       },
       "fader": {
         "chain": [
-          "0x5a57720",
-          "0x338",
-          "0x2a8",
-          "0x494"
+          "0x5a876c8"
         ],
-        "type": "f32",
+        "type": "f64",
         "map": [
           0.0,
           1.0
-        ]
+        ],
+        "_note": "Variable global dentro de rekordbox.exe (posición lineal 0..1). Hallada con offset_detect; pendiente de confirmar tras reinicio."
       }
     }
   },

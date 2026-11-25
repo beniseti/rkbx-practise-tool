@@ -19,6 +19,8 @@ STR = 0x38000000
 
 
 class FakeRekordbox:
+    global_fader = False      # si True, la posición del fader también vive en una global del módulo
+
     def __init__(self, seed=0):
         self.rng = random.Random(seed)
         m = FakeMemory(module_base=BASE)
@@ -63,6 +65,8 @@ class FakeRekordbox:
             self.m.write_f64(d + 0x28, s["pos"])
             self.m.write_f32(d + 0x30, s["fader"])
             self.m.write_f32(d + 0x50, s["fader"] ** 3)   # ganancia con curva "logarítmica"
+            if self.global_fader:
+                self.m.write_f64(BASE + 0x7000 + 8 * (n - 1), s["fader"])
             self.m.write_f32(d + 0x34, s["eq"])
             self.m.write(d + 0x38, bytes([1 if self.master == n else 0]))
         self.m.write(HEAP + 0x60, bytes([self.master - 1]))
@@ -229,3 +233,15 @@ def test_log_curve_fader_candidate_is_kept(tmp_path):
     chains = load_candidates(candidates_path(tmp_path, "7.2.3"))["fader:1"]["chains"]
     assert ["0x5000", "0x10", "0x30"] in chains     # posición lineal
     assert ["0x5000", "0x10", "0x50"] in chains     # ganancia: a media carrera 0.47³ ≈ 10 % del rango
+
+
+def test_static_global_candidate_is_preferred(tmp_path):
+    rb = FakeRekordbox(seed=8)
+    rb.global_fader = True
+    rb.flush()
+    mem = FakeProcessMemory(rb.m, MOD_SIZE)
+    console = ScriptedConsole(rb)
+    out = run(mem, "7.2.3", [1], ["fader"], console, tmp_path)
+    spec = json.loads(out.read_text())["decks"]["1"]["fader"]
+    assert spec["chain"] == ["0x7000"] and spec["type"] == "f64"
+    assert any("[GLOBAL, estable]" in line for line in console.log)
