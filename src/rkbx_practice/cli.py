@@ -319,6 +319,12 @@ def cmd_lights_show(cfg, args) -> int:
             _out(f"  {analysis.bar_beat(sec.start):>7}  {int(t0 // 60)}:{t0 % 60:05.2f}  "
                  f"{sec.name_es:<22} graves {sec.low:4.2f}  medios {sec.mid:4.2f}  agudos {sec.high:4.2f}  "
                  f"subida {sec.trend:+.2f}")
+        if analysis.minidrops:
+            _out("Minidrops (apagón + cambio de efecto):")
+            for md in analysis.minidrops:
+                t1 = analysis.beat_time(md.returns) or 0.0
+                _out(f"  hueco desde {analysis.bar_beat(md.dip_start)} · vuelve en "
+                     f"{analysis.bar_beat(md.returns)} ({int(t1 // 60)}:{t1 % 60:05.2f})")
         _out("Eventos:")
     for e in show.sorted_events():
         when = ""

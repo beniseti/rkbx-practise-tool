@@ -30,7 +30,7 @@ from pathlib import Path
 from .analysis import TrackAnalysis
 from .commands import LightCommand
 
-FORMAT_VERSION = 5   # 2: estructura · 3: apagón + drop en movimiento · 4: siempre en movimiento · 5: paleta por tema e intensidad de drops
+FORMAT_VERSION = 6   # 6: minidrops · 2: estructura · 3: apagón + drop en movimiento · 4: siempre en movimiento · 5: paleta por tema e intensidad de drops
 
 
 @dataclass
@@ -114,6 +114,14 @@ DEFAULT_RULES: dict[str, object] = {
         {"fx": "chase", "params": {"color": "$accent", "bpm": "live", "beats": 0.5}},
         {"fx": "alternate", "params": {"color": "$accent", "color2": "$primary", "bpm": "live"}},
         {"fx": "wave", "params": {"color": "$accent", "color2": "$primary", "bpm": "live", "beats": 1}},
+    ],
+    # Minidrops (pedido del usuario): apagón durante el hueco sin bombo (como mucho `beats` beats)
+    # y, al volver el bombo, un efecto distinto cada vez (se van alternando las variantes).
+    "mini_blackout": {"fx": "off", "params": {}, "beats": 4},
+    "mini_drop": [
+        {"fx": "chase", "params": {"color": "$accent", "bpm": "live", "beats": 0.5}},
+        {"fx": "alternate", "params": {"color": "$accent", "color2": "$primary", "bpm": "live"}},
+        {"fx": "wave", "params": {"color": "$accent", "color2": "$secondary", "bpm": "live", "beats": 1}},
     ],
     "outro": {"fx": "wave", "params": {"color": "$primary", "color2": "$secondary", "bpm": "live", "beats": 8}},
 }
@@ -221,6 +229,16 @@ def generate_show(track_id: str, title: str, analysis: TrackAnalysis,
                 add(pre, "Pre-drop", "pre_drop", dark)
             if gap and dark > sec.start:
                 add(dark, "Apagón", "blackout", nxt.start)
+    # Minidrops: apagón en el hueco y cambio de efecto al volver el bombo.
+    for k, md in enumerate(getattr(analysis, "minidrops", []) or []):
+        black = pick_rule(r, "mini_blackout")
+        if black.get("fx"):
+            dark = max(md.dip_start, md.returns - int(black.get("beats", 4)))
+            if dark < md.returns:
+                add(dark, "Minidrop · apagón", "mini_blackout", md.returns)
+        sec = next((x for x in sections if x.start <= md.returns < x.end), None)
+        add(md.returns, f"Minidrop ({sec.name_es})" if sec else "Minidrop", "mini_drop",
+            sec.end if sec else None, occurrence=k)
     if not sections:
         # Sin estructura (no debería pasar con rejilla): solo cambios de energía.
         for c in analysis.changes:

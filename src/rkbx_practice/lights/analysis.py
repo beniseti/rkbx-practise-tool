@@ -52,6 +52,7 @@ class TrackAnalysis:
     # Energía por beat de cada banda («low», «mid», «high»), 0..1 normalizada en el tema.
     bands: dict[str, list[float]] = field(default_factory=dict)
     sections: list = field(default_factory=list)              # structure.Section
+    minidrops: list = field(default_factory=list)             # structure.MiniDrop
     source: str = ""                                          # "PWV7", "PWV5" o ""
 
     def beat_time(self, beat: int) -> float | None:
@@ -208,11 +209,12 @@ def read_track_analysis(anlz_path: str | Path, grid: BeatGrid | None = None) -> 
 def build_analysis(grid: BeatGrid, phrases: list[Phrase], samples: dict[str, list[float]],
                    source: str = "") -> TrackAnalysis:
     """Analysis completo a partir de rejilla, frases y columnas de forma de onda por banda."""
-    from .structure import classify_sections
+    from .structure import classify_sections, detect_minidrops
     bands = {k: energy_per_beat(v, grid) for k, v in samples.items() if v}
     energy = bands.get("low", [])
     changes = detect_changes(grid, energy) if energy else []
     a = TrackAnalysis(grid=grid, phrases=phrases, beat_energy=energy, changes=changes,
                       bands=bands, source=source)
     a.sections = classify_sections(a)
+    a.minidrops = detect_minidrops(a)
     return a

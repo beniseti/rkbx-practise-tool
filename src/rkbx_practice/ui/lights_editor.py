@@ -146,6 +146,14 @@ class TimelineWidget(QWidget):
             path.closeSubpath()
             p.fillPath(path, QBrush(BAND_COLORS[name]))
 
+        # Minidrops: franja negra en el hueco sin bombo (ahí habrá apagón).
+        for md in getattr(self.analysis, "minidrops", []) or []:
+            r = QRectF(self._x(md.dip_start), top + 10, self._x(md.returns) - self._x(md.dip_start),
+                       role_top - top - 10)
+            p.fillRect(r, QColor(0, 0, 0, 200))
+            p.setPen(QPen(QColor("#ff5555"), 1))
+            p.drawLine(QPointF(self._x(md.returns), top + 10), QPointF(self._x(md.returns), role_top))
+
         # Cambios de energía (drop/break): línea fina.
         for c in self.analysis.changes:
             x = self._x(c.beat)
@@ -239,7 +247,8 @@ class LightsEditor(QDialog):
             f"<span style='color:{c}'>■</span> {ROLE_NAMES_ES[r]}" for r, c in ROLE_COLORS.items())
             + "<br>Bandas: <span style='color:#1e6eff'>■</span> graves  <span style='color:#ffa028'>■</span> medios"
             + "  <span style='color:#f0f0f0'>■</span> agudos   ·   Frases de Rekordbox: franja inferior"
-            + "   <span style='color:#ffe14d'>▼</span> evento   <span style='color:#ff8a00'>|</span> reproducción")
+            + "   <span style='color:#ffe14d'>▼</span> evento   <span style='color:#ff8a00'>|</span> reproducción"
+            + "   <span style='color:#ff5555'>▌</span> minidrop (apagón)")
         legend.setProperty("role", "dim")
         lay.addWidget(legend)
 

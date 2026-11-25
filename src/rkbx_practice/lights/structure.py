@@ -158,3 +158,57 @@ def _rate_intensity(sections: list[Section], has_energy: bool) -> None:
         sec.tier = tier_for(intensity)
         sec.occurrence = counts.get(sec.role, 0)
         counts[sec.role] = sec.occurrence + 1
+
+
+# Minidrops (pedido del usuario, ver captura de Rekordbox): dentro de un Chorus/groove el bombo
+# desaparece 1-8 beats y vuelve en inicio de compás. Se hace un apagón y se cambia de efecto.
+MINI_LOW = 0.35        # graves del hueco por debajo de esto (relativo al nivel normal del tema)
+MINI_CONTEXT = 0.60    # graves antes y después del hueco por encima de esto
+MINI_MAX_BEATS = 8
+
+
+@dataclass(frozen=True)
+class MiniDrop:
+    dip_start: int     # primer beat sin bombo (1-based)
+    returns: int       # beat en que vuelve el bombo (inicio de compás)
+
+
+def detect_minidrops(analysis) -> list[MiniDrop]:
+    low = (analysis.bands or {}).get("low") or []
+    n = len(low)
+    if n < 16:
+        return []
+    ref = _percentile(low, 0.8) or 1.0
+    rel = [v / ref for v in low]
+    numbers = analysis.grid.beat_numbers
+    kick_roles = {"groove", "peak", "drop"}
+
+    def role_at(beat: int) -> str | None:
+        for sec in analysis.sections:
+            if sec.start <= beat < sec.end:
+                return sec.role
+        return None
+
+    drops_after_build = {sec.start for k, sec in enumerate(analysis.sections)
+                         if sec.role == "drop" and k and analysis.sections[k - 1].role == "buildup"}
+    found: list[MiniDrop] = []
+    i = 4
+    while i < n - 4:
+        if rel[i] >= MINI_LOW:
+            i += 1
+            continue
+        j = i
+        while j < n and rel[j] < MINI_LOW:
+            j += 1
+        length = j - i                        # beats sin bombo: i .. j-1 (0-based)
+        before = sum(rel[max(0, i - 4):i]) / max(1, min(4, i))
+        after = sum(rel[j:j + 4]) / max(1, len(rel[j:j + 4]))
+        # La vuelta del bombo se ajusta al inicio de compás más cercano (±1 beat de margen).
+        bar = next((k for k in (j, j - 1, j + 1) if 0 <= k < n and numbers[k] == 1), None)
+        returns = (bar + 1) if bar is not None else j + 1   # 1-based
+        if (1 <= length <= MINI_MAX_BEATS and before >= MINI_CONTEXT and after >= MINI_CONTEXT
+                and bar is not None and returns not in drops_after_build
+                and role_at(returns) in kick_roles and role_at(i + 1) in kick_roles | {None}):
+            found.append(MiniDrop(i + 1, returns))
+        i = j
+    return found

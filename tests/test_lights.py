@@ -124,7 +124,7 @@ def test_generate_show_from_structure(tmp_path):
     store.save(show)
     again = store.load("1001")
     assert [(e.beat, e.fx, e.params) for e in again.events] == [(e.beat, e.fx, e.params) for e in show.events]
-    assert json.loads(store.path("1001").read_text())["format_version"] == 5
+    assert json.loads(store.path("1001").read_text())["format_version"] == 6
 
 
 def test_drop_intensity_tiers_and_variants():
@@ -414,7 +414,7 @@ def test_old_show_files_are_regenerated_unless_manual(library, tmp_path):
     (tmp_path / "1001.json").write_text(json.dumps(old))
     mgr = LightsManager(cfg, library, BeatGridCache(), sender=Sender(), analyzer=lambda p: techno_analysis())
     show = mgr.load_or_generate(library.track("1001"))
-    assert show.format_version == 5 and any(e.fx == "build" for e in show.events)
+    assert show.format_version == 6 and any(e.fx == "build" for e in show.events)
     old["events"].append({"beat": 9, "label": "manual", "source": "manual", "fx": "flash", "params": {}})
     (tmp_path / "1001.json").write_text(json.dumps(old))
     show = mgr.load_or_generate(library.track("1001"))
@@ -446,7 +446,7 @@ def test_cli_regenerate_keeps_manual(library, tmp_path, monkeypatch):
     assert cli.main(["--config", str(cfg_path), "--library-json", lib_json,
                      "lights", "regenerate", "--playlist", "Favoritos"]) == 0
     assert store.load("1001").events[0].source == "manual"          # conservado
-    assert store.load("1002").format_version == 5                    # regenerado
+    assert store.load("1002").format_version == 6                    # regenerado
     assert cli.main(["--config", str(cfg_path), "--library-json", lib_json,
                      "lights", "regenerate", "--playlist", "Favoritos", "--force"]) == 0
     assert store.load("1001").events[0].source == "structure"
@@ -467,7 +467,7 @@ def test_default_backgrounds_always_move():
     r = effective_rules(LightsConfig().rules)
     for key, variants in r.items():
         for rule in variants:
-            if key in ("blackout", "drop_hit") or not rule.get("fx"):
+            if key in ("blackout", "mini_blackout", "drop_hit") or not rule.get("fx"):
                 continue
             assert rule["fx"] in moving, key
             assert "zones" not in rule["params"], key      # ninguna zona se queda sin efecto
@@ -562,3 +562,27 @@ def test_paused_deck_with_fader_up_does_not_lead():
     eng.update(snap(1.0, [deck(1, fader=0.5, track="A", pos=0.2, playing=False),
                           deck(2, fader=1.0, track="B", pos=30.0, playing=False)]))
     assert eng.lead_deck is None and "reposo" in eng.status
+
+
+def test_minidrops_blackout_then_new_effect():
+    from rkbx_practice.lights.analysis import build_analysis
+    grid = BeatGrid.uniform(128.0, n_beats=192)
+    beat_s = 60 / 128
+    low, mid, high = [], [], []
+    for c in range(int(192 * beat_s * 150)):        # 150 columnas por segundo, sin desfase
+        b = int(c / 150 / beat_s) + 1
+        lo = 0.9
+        if 1 <= b <= 32:
+            lo = 0.5                                # intro
+        if 63 <= b <= 64 or 125 <= b <= 128:
+            lo = 0.05                               # minidrops: 2 y 4 beats sin bombo
+        low.append(lo)
+        mid.append(0.5)
+        high.append(0.6)
+    phrases = [Phrase(1, "Intro"), Phrase(33, "Chorus"), Phrase(97, "Chorus")]
+    a = build_analysis(grid, phrases, {"low": low, "mid": mid, "high": high}, "PWV7")
+    assert [(m.dip_start, m.returns) for m in a.minidrops] == [(63, 65), (125, 129)]
+    ev = {e.beat: e for e in generate_show("1", "", a, {}).events}
+    assert ev[63].fx == "off" and ev[125].fx == "off"                     # apagón en el hueco
+    assert ev[65].fx == "chase" and ev[129].fx == "alternate"            # efecto distinto cada vez
+    assert "Minidrop" in ev[65].label
