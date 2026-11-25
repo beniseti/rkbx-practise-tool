@@ -168,7 +168,9 @@ def test_engine_fires_events_in_order():
     eng, sent = make_engine()
     fired = play(eng, 0.0, 20.0, pos0=0.0)
     assert [e.beat for e in fired] == [9, 33]             # el 17 no tiene efecto
-    assert sent == [LightCommand("strobe", {"dur_ms": 1000}), LightCommand("flash", {"color": "rojo"})]
+    # Al engancharse aún no ha llegado ningún efecto de fondo: primero el efecto básico.
+    assert sent[0].fx == "wave"
+    assert sent[1:] == [LightCommand("strobe", {"dur_ms": 1000}), LightCommand("flash", {"color": "rojo"})]
     assert eng.lead_deck == 1
 
 
@@ -190,7 +192,50 @@ def test_engine_does_not_fire_after_jump():
     # Salto (hot cue) de 1 s a 20 s: los eventos 9 y 33 quedan detrás o delante, ninguno se dispara de golpe.
     fired = eng.update(snap(1.02, [deck(1, fader=1.0, track="A", pos=20.0).with_(jumped=True),
                                    deck(2, fader=0.0, track="B")]))
-    assert fired == [] and sent == []
+    assert fired == [] and all(c.fx == "wave" for c in sent)   # solo el efecto básico, ningún evento
+
+
+def test_engine_basic_effect_until_events_are_loaded():
+    sent = []
+    shows = {"A": None}
+    eng = LightsEngine(LightsConfig(enabled=True), MixerConfig(), DetectionConfig(),
+                       shows=lambda tid: shows.get(tid), grids=lambda p: GRID, send=sent.append,
+                       track_bpm=lambda tid: 120.0)
+    play(eng, 0.0, 1.0, pos0=0.0)
+    assert [c.fx for c in sent] == ["wave"] and sent[0].params["bpm"] == 120.0   # una sola vez
+    assert "efecto básico" in eng.status
+    # Se carga el archivo: se pasa al efecto de la sección actual (el fondo del beat 1).
+    shows["A"] = LightShow("A", events=[LightEvent(1, "Intro", "structure", "breathe", {"color": "azul"}),
+                                        LightEvent(9, "Groove", "structure", "alternate", {"bpm": "live"})])
+    play(eng, 1.02, 5.0, pos0=1.02)
+    assert [c.fx for c in sent] == ["wave", "breathe", "alternate"]
+
+
+def test_engine_idle_when_nothing_sounds():
+    eng, sent = make_engine()
+    for i in range(5):
+        eng.update(snap(i * 0.02, [deck(1, fader=0.0, track="A", pos=0), deck(2, fader=0.0, track="B")]))
+    assert [c.fx for c in sent] == ["twinkle"]
+    assert "reposo" in eng.status
+
+
+def test_engine_catch_up_sends_current_background_after_jump():
+    sent = []
+    show = LightShow("A", events=[LightEvent(1, "Intro", "structure", "wave", {}),
+                                  LightEvent(9, "Subida", "structure", "build", {"dur_ms": 4000}),
+                                  LightEvent(17, "Drop", "structure", "chase", {"beats": 0.5}),
+                                  LightEvent(33, "Breakdown", "structure", "twinkle", {})])
+    eng = LightsEngine(LightsConfig(enabled=True), MixerConfig(), DetectionConfig(),
+                       shows=lambda tid: show, grids=lambda p: GRID, send=sent.append,
+                       track_bpm=lambda tid: 120.0)
+    play(eng, 0.0, 0.5, pos0=0.0)
+    assert [c.fx for c in sent] == ["wave"]
+    # Hot cue a mitad de la subida (beat ~12): se repite el último FONDO (wave), no el build.
+    eng.update(snap(0.52, [deck(1, fader=1.0, track="A", pos=5.6).with_(jumped=True), deck(2, fader=0.0, track="B")]))
+    assert [c.fx for c in sent] == ["wave"]
+    # Salto al drop (beat ~20): se pone su fondo (chase) sin esperar al siguiente evento.
+    eng.update(snap(0.54, [deck(1, fader=1.0, track="A", pos=9.6).with_(jumped=True), deck(2, fader=0.0, track="B")]))
+    assert [c.fx for c in sent] == ["wave", "chase"]
 
 
 def test_engine_follows_lead_deck():

@@ -124,6 +124,12 @@ class LightsConfig:
     # especiales (drop_hit, pre_drop). Lo que no se ponga aquí usa los valores por defecto de
     # lights/show.py (DEFAULT_RULES).
     rules: dict[str, dict] = field(default_factory=dict)
+    # Efecto básico mientras suena un tema sin eventos cargados (hasta que se cargan, o si no tiene).
+    fallback: dict = field(default_factory=lambda: {
+        "fx": "wave", "params": {"color": "azul", "color2": "morado", "bpm": "live", "beats": 4}})
+    # Reposo: ningún deck suena (faders abajo) o el deck que manda está vacío.
+    idle: dict = field(default_factory=lambda: {
+        "fx": "twinkle", "params": {"color": "blanco", "color2": "azul", "density": 0.06}})
 
 
 @dataclass

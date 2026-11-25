@@ -196,6 +196,23 @@
       "strips": 3,
       "sections_per_strip": 3,
       "leds_per_section": 20
+    },
+    "fallback": {
+      "fx": "wave",
+      "params": {
+        "color": "azul",
+        "color2": "morado",
+        "bpm": "live",
+        "beats": 4
+      }
+    },
+    "idle": {
+      "fx": "twinkle",
+      "params": {
+        "color": "blanco",
+        "color2": "azul",
+        "density": 0.06
+      }
     }
   }
 }
