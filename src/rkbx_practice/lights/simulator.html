@@ -23,7 +23,7 @@
   .stage { background: #000; border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
            position: relative; }
   #room { position: absolute; inset: 0; transition: background 60ms linear; opacity: .35; }
-  canvas { display: block; width: 100%; height: 220px; position: relative; }
+  canvas { display: block; width: 100%; height: 260px; position: relative; }
   .now { display: flex; gap: 16px; padding: 8px 12px; border-top: 1px solid var(--border);
          background: var(--panel); position: relative; flex-wrap: wrap; }
   .now b { color: #fff; }
@@ -67,8 +67,9 @@
       <h2>Probar efectos</h2>
       <div class="tests" id="tests"></div>
       <div class="opts">
-        <label>LEDs <input id="leds" type="number" min="4" max="600" value="60" style="width:70px"></label>
-        <label><input id="layout" type="checkbox"> en anillo</label>
+        <label>LEDs por sección <input id="leds" type="number" min="1" max="200" value="20" style="width:64px"></label>
+        <span class="dim" id="layoutInfo"></span>
+        <label>Zonas <input id="zones" placeholder="all · odd · even · strip:2 · section:1 · 1,5,9" style="width:260px"></label>
       </div>
     </div>
   </section>
@@ -105,82 +106,134 @@ function hsv(h, s, v) {
   return r.map(x => x * 255);
 }
 
-// --- Estado de las luces -------------------------------------------------
-// base: modo de fondo permanente ("solid", "pulse" al BPM, "breathe"); cambia con color/off/pulse/breathe.
-// overlay: efecto temporal encima (flash, strobe, rainbow, build…).
-const S = { base: { mode: "solid", color: [0,0,0], since: 0 }, prevBase: null, baseAt: 0,
-            overlay: null, count: 0 };
+// --- Montaje: tiras × secciones = zonas (tira 1 → zonas 1..S, tira 2 → S+1..2S…) ---------------
+const L = { strips: 3, sections: 3 };
+const nZones = () => L.strips * L.sections;
 
-function setBase(b, now) { S.prevBase = S.base; S.base = { ...b, since: now }; S.baseAt = now; S.overlay = null; }
+function expandZones(spec) {
+  const all = Array.from({ length: nZones() }, (_, i) => i + 1);
+  if (spec === undefined || spec === null || spec === "" || spec === "all" || spec === "todas") return all;
+  if (Array.isArray(spec)) return spec.map(Number).filter(z => z >= 1 && z <= nZones());
+  const t = String(spec).trim().toLowerCase();
+  if (t === "odd" || t === "impares") return all.filter(z => z % 2 === 1);
+  if (t === "even" || t === "pares") return all.filter(z => z % 2 === 0);
+  const m = /^(strip|tira|section|seccion|sección):(\d+)$/.exec(t);
+  if (m) {
+    const n = Number(m[2]);
+    return ["strip", "tira"].includes(m[1]) ? all.filter(z => Math.floor((z - 1) / L.sections) + 1 === n)
+                                            : all.filter(z => (z - 1) % L.sections + 1 === n);
+  }
+  return t.split(",").map(Number).filter(z => z >= 1 && z <= nZones());
+}
+
+// --- Estado por zona ------------------------------------------------------------------
+// base: modo de fondo permanente ("solid", "pulse", "breathe", "alternate", "chase").
+// overlay: efecto temporal encima (flash, strobe, rainbow, build…).
+const S = { zones: [], count: 0 };
+function resetZones() {
+  S.zones = Array.from({ length: nZones() }, () => ({ base: { mode: "solid", color: [0,0,0], since: 0 },
+                                                       prevBase: null, baseAt: 0, overlay: null }));
+}
+resetZones();
 
 function apply(cmd) {
   const now = performance.now();
   const fx = String(cmd.fx || "?").toLowerCase();
   const dur = Number(cmd.dur_ms ?? cmd.duration_ms ?? 0);
   const color = (d) => parseColor(cmd.color, d);
-  switch (fx) {
-    case "color": setBase({ mode: "solid", color: color([0,80,255]) }, now); break;
-    case "off": setBase({ mode: "solid", color: [0,0,0] }, now); break;
-    case "pulse": setBase({ mode: "pulse", color: color([150,0,255]), bpm: Number(cmd.bpm) || 128 }, now); break;
-    case "breathe": setBase({ mode: "breathe", color: color([0,80,255]), period: Number(cmd.period_ms) || 4000 }, now); break;
-    case "flash": S.overlay = { fx, start: now, dur: dur || 200, color: color([255,255,255]) }; break;
-    case "strobe": S.overlay = { fx, start: now, dur: dur || 1000, color: color([255,255,255]), hz: Number(cmd.hz || 12) }; break;
-    case "rainbow": S.overlay = { fx, start: now, dur: dur || 4000, speed: Number(cmd.speed || 0.5) }; break;
-    case "build": S.overlay = { fx, start: now, dur: dur || 8000, color: color([255,255,255]) }; break;
-    default: S.overlay = { fx: "unknown", start: now, dur: dur || 600, color: [160, 0, 255] };
-  }
-  document.getElementById("nowFx").textContent = fx;
-  const b = S.base, c = `rgb(${b.color.map(Math.round).join(", ")})`;
-  document.getElementById("nowBase").textContent = b.color.every(v => v === 0) ? "apagado"
-    : b.mode === "pulse" ? `pulso ${c} a ${b.bpm} BPM` : b.mode === "breathe" ? `respiración ${c}` : c;
+  const targets = expandZones(cmd.zones);
+  const bpm = Number(cmd.bpm) || 128;
+  targets.forEach((z, pos) => {
+    const st = S.zones[z - 1];
+    const setBase = (b) => { st.prevBase = st.base; st.base = { ...b, since: now }; st.baseAt = now; st.overlay = null; };
+    const over = (o) => { st.overlay = { ...o, start: now, pos, count: targets.length }; };
+    switch (fx) {
+      case "color": setBase({ mode: "solid", color: color([0,80,255]) }); break;
+      case "off": setBase({ mode: "solid", color: [0,0,0] }); break;
+      case "pulse": setBase({ mode: "pulse", color: color([150,0,255]), bpm }); break;
+      case "breathe": setBase({ mode: "breathe", color: color([0,80,255]), period: Number(cmd.period_ms) || 4000 }); break;
+      case "alternate": setBase({ mode: "alternate", color: color([150,0,255]),
+                                  color2: parseColor(cmd.color2, [0,0,0]), bpm, zone: z }); break;
+      case "chase": setBase({ mode: "chase", color: color([255,120,0]), bpm, beats: Number(cmd.beats) || 1,
+                              pos, count: targets.length }); break;
+      case "flash": over({ fx, dur: dur || 200, color: color([255,255,255]) }); break;
+      case "strobe": over({ fx, dur: dur || 1000, color: color([255,255,255]), hz: Number(cmd.hz || 12) }); break;
+      case "rainbow": over({ fx, dur: dur || 4000, speed: Number(cmd.speed || 0.5) }); break;
+      case "build": over({ fx, dur: dur || 8000, color: color([255,255,255]) }); break;
+      default: over({ fx: "unknown", dur: dur || 600, color: [160, 0, 255] });
+    }
+  });
+  document.getElementById("nowFx").textContent =
+    `${fx}${cmd.zones && cmd.zones !== "all" ? ` → zonas ${targets.join(",")}` : ""}`;
+  document.getElementById("nowBase").textContent = describeBases();
+}
+
+function describeBases() {
+  const modes = {};
+  S.zones.forEach(z => { const b = z.base, k = b.color.every(v => v === 0) && b.mode === "solid" ? "apagado" : b.mode;
+                         modes[k] = (modes[k] || 0) + 1; });
+  const names = { solid: "color", pulse: "pulso", breathe: "respiración", alternate: "alterno", chase: "persecución" };
+  return Object.entries(modes).map(([k, n]) => `${names[k] || k} ×${n}`).join(" · ");
 }
 
 function baseColor(b, now) {
   if (!b) return [0,0,0];
+  const beatMs = 60000 / (b.bpm || 128);
   if (b.mode === "pulse") {                       // golpe en cada beat que decae
-    const beat = 60000 / b.bpm, ph = ((now - b.since) % beat) / beat;
+    const ph = ((now - b.since) % beatMs) / beatMs;
     return scale(b.color, 0.25 + 0.75 * Math.pow(1 - ph, 3));
   }
   if (b.mode === "breathe") {
     const ph = ((now - b.since) % b.period) / b.period;
     return scale(b.color, 0.15 + 0.85 * (0.5 - 0.5 * Math.cos(ph * 2 * Math.PI)));
   }
+  if (b.mode === "alternate") {                   // pares e impares se turnan en cada beat
+    const beat = Math.floor((now - b.since) / beatMs);
+    const ph = ((now - b.since) % beatMs) / beatMs;
+    const mine = (b.zone + beat) % 2 === 0;
+    return mine ? scale(b.color, 0.35 + 0.65 * Math.pow(1 - ph, 2)) : scale(b.color2, 0.35);
+  }
+  if (b.mode === "chase") {                       // la luz recorre las zonas, una por paso
+    const step = Math.floor((now - b.since) / (beatMs * b.beats));
+    const ph = ((now - b.since) % (beatMs * b.beats)) / (beatMs * b.beats);
+    return step % b.count === b.pos ? scale(b.color, 0.4 + 0.6 * (1 - ph)) : scale(b.color, 0.06);
+  }
   return b.color;
 }
 
-function currentBase(now) {
-  const k = Math.min(1, (now - S.baseAt) / 150);   // fundido de 150 ms entre fondos
-  return mix(baseColor(S.prevBase, now), baseColor(S.base, now), k);
+function zoneBase(st, now) {
+  const k = Math.min(1, (now - st.baseAt) / 150);   // fundido de 150 ms entre fondos
+  return mix(baseColor(st.prevBase, now), baseColor(st.base, now), k);
 }
 
-function ledColors(now, n) {
-  const base = currentBase(now);
-  const out = new Array(n).fill(base);
-  const o = S.overlay;
-  if (!o) return out;
+// Color de un LED: índice dentro de la zona (i de n), para efectos que recorren la zona.
+function ledColor(st, now, i, n, z) {
+  const base = zoneBase(st, now);
+  const o = st.overlay;
+  if (!o) return base;
   const p = (now - o.start) / o.dur;
-  if (p >= 1) { S.overlay = null; document.getElementById("nowFx").textContent = "—"; return out; }
-  if (o.fx === "flash") return out.map(() => mix(base, o.color, Math.pow(1 - p, 1.6)));
+  if (p >= 1) { st.overlay = null; return base; }
+  if (o.fx === "flash") return mix(base, o.color, Math.pow(1 - p, 1.6));
   if (o.fx === "strobe") {
     const on = Math.floor((now - o.start) / (1000 / o.hz / 2)) % 2 === 0;
-    return out.map(() => on ? o.color : scale(base, 0.15));
+    return on ? o.color : scale(base, 0.15);
   }
   if (o.fx === "rainbow") {
     const t = (now - o.start) / 1000 * o.speed;
     const fade = Math.min(1, (1 - p) * 6);
-    return out.map((_, i) => mix(base, hsv((i / n + t) % 1, 1, 1), fade));
+    return mix(base, hsv(((z - 1) * n + i) / (nZones() * n) + t, 1, 1), fade);
   }
   if (o.fx === "build") {                          // tensión: sube el brillo y el parpadeo se acelera
     const hz = 1 + 15 * p * p;
     const on = Math.floor((now - o.start) / 1000 * hz * 2) % 2 === 0;
-    const lit = Math.round(n * (0.2 + 0.8 * p));    // se van encendiendo LEDs desde el centro
-    return out.map((_, i) => Math.abs(i - (n - 1) / 2) <= lit / 2
-      ? mix(scale(base, 0.3), o.color, on ? 0.25 + 0.75 * p : 0.1 * p) : scale(base, 0.3));
+    const lit = n * (0.2 + 0.8 * p);              // se encienden LEDs desde el centro de cada zona
+    return Math.abs(i - (n - 1) / 2) <= lit / 2
+      ? mix(scale(base, 0.3), o.color, on ? 0.25 + 0.75 * p : 0.1 * p) : scale(base, 0.3);
   }
-  return out.map(() => mix(base, o.color, Math.sin(p * Math.PI)));
+  return mix(base, o.color, Math.sin(p * Math.PI));
 }
 
-// --- Dibujo ----------------------------------------------------------------
+// --- Dibujo: una fila por tira, cada tira partida en sus secciones ---------------------
 const canvas = document.getElementById("strip"), ctx = canvas.getContext("2d");
 const room = document.getElementById("room");
 function draw(now) {
@@ -189,28 +242,34 @@ function draw(now) {
   if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  const n = Math.max(4, Math.min(600, Number(document.getElementById("leds").value) || 60));
-  const cols = ledColors(now, n);
-  const ring = document.getElementById("layout").checked;
-  let avg = [0,0,0];
-  cols.forEach((c, i) => {
-    let x, y;
-    if (ring) {
-      const a = i / n * Math.PI * 2 - Math.PI / 2, r = Math.min(w, h) * 0.38;
-      x = w / 2 + Math.cos(a) * r; y = h / 2 + Math.sin(a) * r;
-    } else {
-      x = (i + 0.5) / n * w; y = h / 2;
+  const per = Math.max(1, Math.min(200, Number(document.getElementById("leds").value) || 20));
+  const gap = 18, padX = 34, rowH = h / L.strips;
+  const secW = (w - 2 * padX - gap * (L.sections - 1)) / L.sections;
+  const size = Math.max(1.5, Math.min(7, secW / per * 0.36));
+  let avg = [0,0,0], total = 0;
+  ctx.font = "11px Segoe UI, Arial"; ctx.textBaseline = "middle";
+  for (let s = 0; s < L.strips; s++) {
+    const y = rowH * (s + 0.5);
+    ctx.shadowBlur = 0; ctx.fillStyle = "#666"; ctx.fillText(`T${s + 1}`, 6, y);
+    for (let c = 0; c < L.sections; c++) {
+      const z = s * L.sections + c + 1, st = S.zones[z - 1];
+      const x0 = padX + c * (secW + gap);
+      ctx.shadowBlur = 0; ctx.fillStyle = "#444";
+      ctx.fillText(String(z), x0 + secW / 2 - 3, y - Math.max(14, size * 3));
+      for (let i = 0; i < per; i++) {
+        const col = ledColor(st, now, i, per, z);
+        const x = x0 + (i + 0.5) / per * secW;
+        const rgb = `rgb(${col.map(v => Math.round(Math.max(0, Math.min(255, v)))).join(",")})`;
+        const lit = Math.max(...col) > 8;
+        ctx.shadowBlur = lit ? size * 3 : 0; ctx.shadowColor = rgb;
+        ctx.fillStyle = lit ? rgb : "#1a1a1a";
+        ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.fill();
+        avg = avg.map((v, k) => v + col[k]); total++;
+      }
     }
-    const size = ring ? Math.max(3, Math.min(10, 600 / n)) : Math.max(2, Math.min(10, w / n * 0.38));
-    const rgb = `rgb(${c.map(v => Math.round(Math.max(0, Math.min(255, v)))).join(",")})`;
-    const lit = Math.max(...c) > 8;
-    ctx.shadowBlur = lit ? size * 3 : 0;
-    ctx.shadowColor = rgb;
-    ctx.fillStyle = lit ? rgb : "#1a1a1a";
-    ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.fill();
-    avg = avg.map((v, k) => v + c[k] / n);
-  });
+  }
   ctx.shadowBlur = 0;
+  avg = avg.map(v => v / Math.max(total, 1));
   room.style.background = `radial-gradient(ellipse at center, rgb(${avg.map(Math.round).join(",")}) 0%, transparent 70%)`;
   requestAnimationFrame(draw);
 }
@@ -250,7 +309,7 @@ connect();
 function paramsText(obj) { return Object.entries(obj || {}).map(([k, v]) => `${k}=${v}`).join(" "); }
 function parseParams(text) {
   const out = {};
-  text.replace(/,/g, " ").split(/\s+/).filter(Boolean).forEach(part => {
+  text.split(/\s+/).filter(Boolean).map(p => p.replace(/[,;]+$/, "")).forEach(part => {
     const i = part.indexOf("="); if (i < 1) return;
     const k = part.slice(0, i), v = part.slice(i + 1);
     out[k] = v !== "" && !isNaN(Number(v)) ? Number(v) : v;
@@ -258,10 +317,16 @@ function parseParams(text) {
   return out;
 }
 fetch("/config").then(r => r.json()).then(cfg => {
-  document.getElementById("leds").value = cfg.leds || 60;
+  const lay = cfg.layout || {};
+  L.strips = Number(lay.strips) || 3; L.sections = Number(lay.sections_per_strip) || 3;
+  document.getElementById("leds").value = lay.leds_per_section || 20;
+  document.getElementById("layoutInfo").textContent =
+    `${L.strips} tiras × ${L.sections} secciones = ${nZones()} zonas (impares: ${expandZones("odd").join(",")})`;
+  resetZones();
   document.getElementById("udp").textContent = `UDP ${cfg.udp}`;
   const effects = Object.keys(cfg.effects || {}).length ? cfg.effects
     : { color: { color: "azul" }, pulse: { color: "morado", bpm: 128 }, breathe: { color: "azul", period_ms: 4000 },
+        alternate: { color: "morado", color2: "azul", bpm: 128 }, chase: { color: "naranja", bpm: 128, beats: 1 },
         build: { color: "blanco", dur_ms: 8000 }, flash: { color: "blanco", dur_ms: 200 },
         strobe: { dur_ms: 1000, hz: 12 }, rainbow: { dur_ms: 4000 }, off: {} };
   const box = document.getElementById("tests");
@@ -270,9 +335,12 @@ fetch("/config").then(r => r.json()).then(cfg => {
     row.innerHTML = `<b></b><input><button>Enviar</button>`;
     row.querySelector("b").textContent = fx;
     const input = row.querySelector("input"); input.value = paramsText(params).replace("bpm=live", "bpm=128");
-    row.querySelector("button").onclick = () => fetch("/send", { method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fx, ...parseParams(input.value) }) });
+    row.querySelector("button").onclick = () => {
+      const extra = document.getElementById("zones").value.trim();
+      const body = { fx, ...parseParams(input.value) };
+      if (extra && body.zones === undefined) body.zones = extra;
+      fetch("/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    };
     box.appendChild(row);
   });
 });

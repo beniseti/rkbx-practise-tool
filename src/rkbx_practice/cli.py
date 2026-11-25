@@ -396,7 +396,7 @@ def cmd_lights_simulate(cfg, args) -> int:
     lc = cfg.lights
     sim = LightSimulator(udp_host=args.host, udp_port=args.udp_port or lc.simulator_port,
                          http_port=args.http_port or lc.simulator_http_port,
-                         leds=args.leds or lc.simulator_leds, effects=lc.effects)
+                         leds=args.leds or lc.simulator_leds, effects=lc.effects, layout=lc.layout)
     try:
         sim.start()
     except OSError as exc:

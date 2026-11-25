@@ -1,0 +1,60 @@
+# Protocolo de luces (PC → ESP32)
+
+Un datagrama **UDP** por comando, con un objeto **JSON** en UTF-8. Sin respuesta.
+Por defecto al `192.168.4.1:4210` (el ESP32 crea su propia Wi-Fi). El simulador
+(`python -m rkbx_practice lights simulate`) entiende exactamente lo mismo.
+
+```json
+{"fx": "flash", "color": "blanco", "dur_ms": 400, "zones": "odd"}
+```
+
+## Montaje y zonas
+
+3 tiras × 3 secciones = **9 zonas** (`lights.layout` en `config/config.json`):
+
+| | Sección 1 | Sección 2 | Sección 3 |
+|---|---|---|---|
+| Tira 1 | 1 | 2 | 3 |
+| Tira 2 | 4 | 5 | 6 |
+| Tira 3 | 7 | 8 | 9 |
+
+`zones` (opcional, por defecto todas):
+
+| Valor | Zonas |
+|---|---|
+| `all` / `todas` | 1-9 |
+| `odd` / `impares` | 1, 3, 5, 7, 9 (tablero de ajedrez) |
+| `even` / `pares` | 2, 4, 6, 8 |
+| `strip:N` / `tira:N` | las 3 secciones de la tira N |
+| `section:N` / `seccion:N` | la sección N de las 3 tiras |
+| `1,5,9` o `[1,5,9]` | lista |
+
+Cada zona tiene su propio estado: un comando solo cambia las zonas a las que va.
+
+## Efectos
+
+**De fondo** (se quedan hasta el siguiente efecto de fondo en esa zona):
+
+| fx | Parámetros | Qué hace |
+|---|---|---|
+| `color` | `color` | Color fijo |
+| `off` | — | Apagado |
+| `pulse` | `color`, `bpm` | Golpe en cada beat que decae |
+| `breathe` | `color`, `period_ms` | Sube y baja suavemente |
+| `alternate` | `color`, `color2`, `bpm` | Zonas pares e impares se turnan en cada beat |
+| `chase` | `color`, `bpm`, `beats` | La luz recorre las zonas indicadas, un paso cada `beats` beats |
+
+**Temporales** (encima del fondo, durante `dur_ms`; luego vuelve el fondo):
+
+| fx | Parámetros | Qué hace |
+|---|---|---|
+| `flash` | `color`, `dur_ms` | Destello que se apaga poco a poco |
+| `strobe` | `color`, `dur_ms`, `hz` | Estroboscopio |
+| `rainbow` | `dur_ms`, `speed` | Arcoíris que se mueve |
+| `build` | `color`, `dur_ms` | Tensión: se encienden LEDs desde el centro de cada zona y el parpadeo se acelera hasta el final |
+
+Colores: nombre en español o inglés (`rojo`, `verde`, `azul`, `blanco`, `amarillo`, `naranja`,
+`morado`, `rosa`, `cian`, `magenta`, `negro`…), `#rrggbb` o `[r, g, b]`.
+Un `fx` desconocido no debe romper nada (el simulador hace un pulso breve).
+
+`bpm` llega ya resuelto con el BPM real del deck (en los archivos de efectos aparece como `"live"`).

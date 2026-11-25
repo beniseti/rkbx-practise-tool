@@ -107,7 +107,7 @@ def test_generate_show_from_structure(tmp_path):
     show = generate_show("1001", "A - B", a, LightsConfig().rules)
     ev = {e.beat: e for e in show.events}
     assert ev[1].fx == "breathe"
-    assert ev[33].fx == "pulse" and ev[33].params["bpm"] == "live"
+    assert ev[33].fx == "chase" and ev[33].params["bpm"] == "live"          # pico
     assert ev[97].fx == "breathe"
     assert ev[129].fx == "build" and ev[129].params["dur_ms"] == 16000      # 32 beats a 120 BPM
     assert ev[157].fx == "strobe" and ev[157].params["dur_ms"] == 2000      # último compás
@@ -124,7 +124,7 @@ def test_generate_show_from_structure(tmp_path):
 def test_config_rules_override_defaults():
     from rkbx_practice.lights.show import effective_rules
     r = effective_rules({"Drop": {"fx": "rainbow", "params": {"dur_ms": 8000}}, "Chorus": {"fx": "x"}})
-    assert r["drop"]["fx"] == "rainbow" and "chorus" not in r and r["groove"]["fx"] == "pulse"
+    assert r["drop"]["fx"] == "rainbow" and "chorus" not in r and r["groove"]["fx"] == "alternate"
 
 
 def test_live_bpm_is_resolved_when_sending():
@@ -135,6 +135,7 @@ def test_live_bpm_is_resolved_when_sending():
 
 def test_params_text():
     assert parse_params("color=rojo dur_ms=200 speed=1.5") == {"color": "rojo", "dur_ms": 200, "speed": 1.5}
+    assert parse_params("color=rojo, zones=1,5,9") == {"color": "rojo", "zones": "1,5,9"}
     assert format_params({"color": "rojo", "dur_ms": 200}) == "color=rojo dur_ms=200"
 
 
@@ -333,3 +334,14 @@ def test_old_show_files_are_regenerated_unless_manual(library, tmp_path):
     (tmp_path / "1001.json").write_text(json.dumps(old))
     show = mgr.load_or_generate(library.track("1001"))
     assert show.format_version == 1                       # con eventos a mano no se toca
+
+
+def test_expand_zones_3x3():
+    from rkbx_practice.lights.commands import expand_zones
+    assert expand_zones("all") == list(range(1, 10))
+    assert expand_zones("impares") == [1, 3, 5, 7, 9]
+    assert expand_zones("even") == [2, 4, 6, 8]
+    assert expand_zones("strip:2") == [4, 5, 6]
+    assert expand_zones("seccion:3") == [3, 6, 9]
+    assert expand_zones("1,5,9,12") == [1, 5, 9]
+    assert expand_zones([2, 8]) == [2, 8]

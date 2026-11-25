@@ -99,7 +99,10 @@ class LightsConfig:
     events_dir: str = "data/lights"
     simulator_port: int = 4211        # UDP del simulador (127.0.0.1)
     simulator_http_port: int = 8765   # página http://127.0.0.1:8765/
-    simulator_leds: int = 60
+    simulator_leds: int = 60          # (obsoleto: se usa layout)
+    # Montaje: 3 tiras con 3 secciones cada una = 9 zonas (tira 1 → zonas 1-3, tira 2 → 4-6…).
+    layout: dict = field(default_factory=lambda: {"strips": 3, "sections_per_strip": 3,
+                                                  "leds_per_section": 20})
     send_to_simulator: bool = False   # además del ESP32, enviar al simulador local
     # Catálogo de efectos del ESP32 con sus parámetros por defecto (cada uno los suyos).
     # "live" = BPM real del deck al enviar; "until_next" = hasta la siguiente sección.
@@ -111,6 +114,8 @@ class LightsConfig:
         "flash": {"color": "blanco", "dur_ms": 200},
         "strobe": {"dur_ms": 1000, "hz": 12},
         "rainbow": {"dur_ms": 4000},
+        "alternate": {"color": "morado", "color2": "azul", "bpm": "live"},
+        "chase": {"color": "naranja", "bpm": "live", "beats": 1},
         "off": {},
     })
     # Efecto por papel musical (intro, groove, peak, breakdown, buildup, drop, outro) y momentos

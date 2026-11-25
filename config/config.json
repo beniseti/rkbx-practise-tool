@@ -65,7 +65,6 @@
     "send_to_simulator": false,
     "simulator_port": 4211,
     "simulator_http_port": 8765,
-    "simulator_leds": 60,
     "effects": {
       "color": {
         "color": "azul"
@@ -93,6 +92,16 @@
       "rainbow": {
         "dur_ms": 4000
       },
+      "alternate": {
+        "color": "morado",
+        "color2": "azul",
+        "bpm": "live"
+      },
+      "chase": {
+        "color": "naranja",
+        "bpm": "live",
+        "beats": 1
+      },
       "off": {}
     },
     "rules": {
@@ -104,24 +113,27 @@
         }
       },
       "groove": {
-        "fx": "pulse",
+        "fx": "alternate",
         "params": {
           "color": "morado",
+          "color2": "azul",
           "bpm": "live"
         }
       },
       "peak": {
-        "fx": "pulse",
+        "fx": "chase",
         "params": {
           "color": "naranja",
-          "bpm": "live"
+          "bpm": "live",
+          "beats": 1
         }
       },
       "breakdown": {
         "fx": "breathe",
         "params": {
           "color": "azul",
-          "period_ms": 6000
+          "period_ms": 6000,
+          "zones": "odd"
         }
       },
       "buildup": {
@@ -159,6 +171,11 @@
           "period_ms": 6000
         }
       }
+    },
+    "layout": {
+      "strips": 3,
+      "sections_per_strip": 3,
+      "leds_per_section": 20
     }
   }
 }

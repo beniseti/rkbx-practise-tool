@@ -92,7 +92,7 @@ class LightsManager:
         if self.simulator is None:
             lc = self.cfg.lights
             self.simulator = LightSimulator(udp_port=lc.simulator_port, http_port=lc.simulator_http_port,
-                                            leds=lc.simulator_leds, effects=lc.effects)
+                                            leds=lc.simulator_leds, effects=lc.effects, layout=lc.layout)
             self.simulator.start()
             if hasattr(self.sender, "add_target"):
                 self.sender.add_target("127.0.0.1", self.simulator.udp_addr[1])

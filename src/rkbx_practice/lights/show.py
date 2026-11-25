@@ -80,9 +80,9 @@ class LightShow:
 # "live" = el BPM real del deck en el momento de enviar.
 DEFAULT_RULES: dict[str, dict] = {
     "intro": {"fx": "breathe", "params": {"color": "azul", "period_ms": 4000}},
-    "groove": {"fx": "pulse", "params": {"color": "morado", "bpm": "live"}},
-    "peak": {"fx": "pulse", "params": {"color": "naranja", "bpm": "live"}},
-    "breakdown": {"fx": "breathe", "params": {"color": "azul", "period_ms": 6000}},
+    "groove": {"fx": "alternate", "params": {"color": "morado", "color2": "azul", "bpm": "live"}},
+    "peak": {"fx": "chase", "params": {"color": "naranja", "bpm": "live", "beats": 1}},
+    "breakdown": {"fx": "breathe", "params": {"color": "azul", "period_ms": 6000, "zones": "odd"}},
     "buildup": {"fx": "build", "params": {"color": "blanco", "dur_ms": "until_next"}},
     "pre_drop": {"fx": "strobe", "params": {"dur_ms": "until_next", "hz": 16}},
     "drop_hit": {"fx": "flash", "params": {"color": "blanco", "dur_ms": 400}},

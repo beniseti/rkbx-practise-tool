@@ -40,11 +40,12 @@ class _QuietServer(ThreadingHTTPServer):
 class LightSimulator:
     def __init__(self, udp_host: str = "127.0.0.1", udp_port: int = 4211,
                  http_host: str = "127.0.0.1", http_port: int = 8765, leds: int = 60,
-                 effects: dict | None = None):
+                 effects: dict | None = None, layout: dict | None = None):
         self.udp_addr = (udp_host, udp_port)
         self.http_addr = (http_host, http_port)
         self.leds = leds
         self.effects = effects or {}
+        self.layout = layout or {"strips": 3, "sections_per_strip": 3, "leds_per_section": 20}
         self._clients: list[queue.Queue] = []
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -110,7 +111,7 @@ class LightSimulator:
                 if self.path in ("/", "/index.html"):
                     self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
                 elif self.path == "/config":
-                    body = json.dumps({"leds": sim.leds, "effects": sim.effects,
+                    body = json.dumps({"leds": sim.leds, "effects": sim.effects, "layout": sim.layout,
                                        "udp": f"{sim.udp_addr[0]}:{sim.udp_addr[1]}"}).encode()
                     self._send(200, body, "application/json")
                 elif self.path == "/events":

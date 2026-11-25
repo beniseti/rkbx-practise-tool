@@ -29,9 +29,11 @@ class LightCommand:
 
 
 def parse_params(text: str) -> dict:
-    """`color=rojo dur_ms=200` → {"color": "rojo", "dur_ms": 200}. Los números se convierten."""
+    """`color=rojo dur_ms=200 zones=1,5,9` → {"color": "rojo", "dur_ms": 200, "zones": "1,5,9"}.
+    Los números se convierten; las listas con comas se quedan como texto."""
     out: dict = {}
-    for part in text.replace(",", " ").split():
+    for part in text.split():
+        part = part.rstrip(",;")
         if "=" not in part:
             continue
         k, v = part.split("=", 1)
@@ -62,3 +64,33 @@ def resolve_live(params: dict, bpm: float | None) -> dict:
             v = round(float(bpm), 2)
         out[k] = v
     return out
+
+
+def expand_zones(spec, strips: int = 3, sections: int = 3) -> list[int]:
+    """Zonas (1-based) a las que va un efecto. Zona = (tira - 1) × secciones + sección.
+
+    `all` (o vacío) · `odd`/`impares` · `even`/`pares` · `strip:2`/`tira:2` · `section:2`/`seccion:2` ·
+    lista `1,5,9` (o [1, 5, 9]). Las zonas fuera de rango se ignoran.
+    """
+    total = strips * sections
+    every = list(range(1, total + 1))
+    if spec is None or spec == "" or spec == "all" or spec == "todas":
+        return every
+    if isinstance(spec, (list, tuple)):
+        items = [int(x) for x in spec]
+    else:
+        text = str(spec).strip().lower()
+        if text in ("odd", "impares"):
+            return [z for z in every if z % 2 == 1]
+        if text in ("even", "pares"):
+            return [z for z in every if z % 2 == 0]
+        if ":" in text:
+            kind, _, num = text.partition(":")
+            n = int(num)
+            if kind in ("strip", "tira"):
+                return [z for z in every if (z - 1) // sections + 1 == n]
+            if kind in ("section", "seccion", "sección"):
+                return [z for z in every if (z - 1) % sections + 1 == n]
+            raise ValueError(f"zona no válida: {spec}")
+        items = [int(x) for x in text.replace(" ", "").split(",") if x]
+    return [z for z in items if 1 <= z <= total]
