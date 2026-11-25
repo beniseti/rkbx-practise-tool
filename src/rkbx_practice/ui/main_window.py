@@ -371,7 +371,10 @@ class MainWindow(QMainWindow):
         decks = [d for d in snap.decks if d.track_id and self.library.track(d.track_id)]
         if not decks:
             return None, None
-        d = next((x for x in decks if x.is_master), None) or max(decks, key=lambda x: x.fader or 0.0)
+        # El que suena: master si se sabe; si no, el de fader más alto entre los que reproducen.
+        playing = [x for x in decks if x.playing is not False] or decks
+        d = next((x for x in playing if x.is_master), None) or max(
+            playing, key=lambda x: (x.playing is True, x.fader or 0.0))
         return self.library.track(d.track_id), d.deck
 
     def _refresh_session(self) -> None:

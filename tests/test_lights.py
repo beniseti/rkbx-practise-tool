@@ -548,3 +548,17 @@ def test_start_simulator_reuses_running_one(library, tmp_path):
         assert running.received and running.received[0]["cmd"]["fx"] == "flash"
     finally:
         running.stop()
+
+
+def test_paused_deck_with_fader_up_does_not_lead():
+    eng, sent = make_engine()
+    # Deck 2 con el fader arriba pero parado; deck 1 sonando con el fader a la mitad.
+    for i in range(10):
+        t = i * 0.02
+        eng.update(snap(t, [deck(1, fader=0.5, track="A", pos=t),
+                            deck(2, fader=1.0, track="B", pos=30.0, playing=False)]))
+    assert eng.lead_deck == 1
+    # Nada sonando (deck 1 también parado): reposo, aunque el fader 2 siga arriba.
+    eng.update(snap(1.0, [deck(1, fader=0.5, track="A", pos=0.2, playing=False),
+                          deck(2, fader=1.0, track="B", pos=30.0, playing=False)]))
+    assert eng.lead_deck is None and "reposo" in eng.status

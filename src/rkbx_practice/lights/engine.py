@@ -153,7 +153,9 @@ class LightsEngine:
             self._set_status("Luces desactivadas (marca «Luces»).")
             self._mode = None
             return []
-        volumes = {d.deck: effective_volume(d, snap.mixer, self.mixer) for d in snap.decks}
+        # Solo cuenta lo que suena: un deck parado con el fader arriba no manda (visto en real).
+        volumes = {d.deck: (0.0 if d.playing is False else effective_volume(d, snap.mixer, self.mixer))
+                   for d in snap.decks}
         lead = self.lead.update(snap.t, volumes)
         self.lead_deck = lead
         if lead is None:
