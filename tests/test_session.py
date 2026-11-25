@@ -138,3 +138,25 @@ def test_skipped_suggestion_is_marked(session_cfg):
     assert s.is_skipped(sug.id)
     s.track_loaded(sug, deck=2)                 # si luego se carga, deja de estar saltado
     assert not s.is_skipped(sug.id) and s.is_struck(sug.id)
+
+
+def test_variety_changes_order_but_keeps_compatibility(library):
+    from rkbx_practice.config import SessionConfig
+    tracks = library.tracks_of("10")
+    cfg = SessionConfig(optimize_time_budget_s=0.1, variety=0.5)
+    orders = {tuple(t.id for t in generate_session(tracks, cfg, rng=random.Random(seed)).tracks)
+              for seed in range(5)}
+    assert len(orders) > 1                                  # sesiones distintas
+    same = generate_session(tracks, cfg, rng=random.Random(3)).tracks
+    assert [t.id for t in same] == [t.id for t in generate_session(tracks, cfg, rng=random.Random(3)).tracks]
+    base = generate_session(tracks, SessionConfig(optimize_time_budget_s=0.1, variety=0.0), rng=random.Random(0))
+    varied = generate_session(tracks, cfg, rng=random.Random(1))
+    assert varied.incompatible_jumps <= base.incompatible_jumps + 2
+
+
+def test_adjacent_keys_are_compatible_both_ways():
+    cfg = SessionConfig()
+    a = T(1, 128, "2A")
+    assert transition(a, T(2, 128, "1A"), cfg).compatible
+    assert transition(a, T(3, 128, "3A"), cfg).compatible
+    assert transition(a, T(4, 128, "1A"), SessionConfig(camelot_strictness="strict")).compatible

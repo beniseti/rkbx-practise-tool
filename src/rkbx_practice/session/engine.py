@@ -58,15 +58,19 @@ def split_usable(tracks: list[Track]) -> tuple[list[Track], list[tuple[Track, st
 
 
 class CostMatrix:
-    def __init__(self, tracks: list[Track], cfg: SessionConfig):
+    def __init__(self, tracks: list[Track], cfg: SessionConfig, rng: random.Random | None = None):
         self.tracks = tracks
         self.cfg = cfg
         n = len(tracks)
         self.c = [[0.0] * n for _ in range(n)]
+        # Variedad: ruido aleatorio SOLO en las transiciones compatibles, para que cada
+        # sesión generada sea distinta sin empeorar la compatibilidad.
+        noise = max(0.0, cfg.variety) * 1.5 if rng is not None else 0.0
         for i in range(n):
             for j in range(n):
                 if i != j:
-                    self.c[i][j] = transition(tracks[i], tracks[j], cfg).cost
+                    info = transition(tracks[i], tracks[j], cfg)
+                    self.c[i][j] = info.cost + (rng.uniform(0.0, noise) if noise and info.compatible else 0.0)
 
     def path_cost(self, path: list[int]) -> float:
         return sum(self.c[path[k]][path[k + 1]] for k in range(len(path) - 1))
@@ -177,7 +181,7 @@ def order_tracks(tracks: list[Track], cfg: SessionConfig, start: Track | None = 
     anchor_external = start is not None and all(t.id != start.id for t in pool)
     if anchor_external:
         pool = [start] + pool
-    cm = CostMatrix(pool, cfg)
+    cm = CostMatrix(pool, cfg, rng)
     n = len(pool)
     all_idx = set(range(n))
 
@@ -193,13 +197,13 @@ def order_tracks(tracks: list[Track], cfg: SessionConfig, start: Track | None = 
             sample.update(rng.sample(range(n), min(20, n)))
             starts = sorted(sample)
 
-    best_path, best_cost = None, float("inf")
-    for s in starts:
-        p = _greedy(cm, s, all_idx)
-        cost = cm.path_cost(p)
-        if cost < best_cost - 1e-9:
-            best_path, best_cost = p, cost
-    assert best_path is not None
+    paths = sorted(((cm.path_cost(p), p) for p in (_greedy(cm, s, all_idx) for s in starts)),
+                   key=lambda x: x[0])
+    best_path = paths[0][1]
+    if cfg.variety > 0 and start is None and len(paths) > 1:
+        # Con variedad, el inicio se elige al azar entre las mejores cadenas.
+        top = [p for c, p in paths if c <= paths[0][0] * (1 + cfg.variety) + 1e-9][:5]
+        best_path = rng.choice(top)
     deadline = time.monotonic() + max(cfg.optimize_time_budget_s, 0.0)
     best_path = _improve(cm, best_path, fixed_start=start is not None, deadline=deadline)
     ordered = [pool[i] for i in best_path]

@@ -42,6 +42,7 @@ class SessionConfig:
     camelot_strictness: str = "moderate"
     wildcard_probability: float = 0.15
     optimize_time_budget_s: float = 1.0
+    variety: float = 0.5   # 0 = siempre la misma sesión; más alto = sesiones más distintas
 
 
 @dataclass
@@ -121,6 +122,8 @@ class AppConfig:
             )
         if not 0.0 <= self.session.wildcard_probability <= 1.0:
             raise ValueError("session.wildcard_probability debe estar entre 0 y 1")
+        if self.session.variety < 0:
+            raise ValueError("session.variety no puede ser negativo")
         if self.session.bpm_tolerance_pct < 0:
             raise ValueError("session.bpm_tolerance_pct no puede ser negativo")
 

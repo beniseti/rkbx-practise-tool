@@ -98,7 +98,8 @@ rkbx-practise-tool/
     "camelot_enabled": true,
     "camelot_strictness": "moderate",
     "wildcard_probability": 0.15,
-    "optimize_time_budget_s": 1.0
+    "optimize_time_budget_s": 1.0,
+    "variety": 0.5
   },
   "live": {
     "poll_interval_ms": 20,
@@ -211,6 +212,7 @@ Implementación:
 
 - Coste de A→B = diferencia de BPM / tolerancia + coste de la relación Camelot (misma 0 · vecina 0,5 · relativa 0,8 · energy boost 1,5 · +7 2,5) + 0,75 si es a mitad/doble tempo + 20 si es incompatible. Las incompatibles se penalizan pero no se prohíben: la sesión incluye todos los temas y marca los saltos incompatibles.
 - Orden: cadena voraz desde varios inicios + mejora local 2-opt (coste direccional) y Or-opt, con límite de tiempo.
+- Variedad (`session.variety`, por defecto 0,5; `--variety` en la CLI): el usuario pidió que cada sesión generada sea distinta. Se suma ruido aleatorio solo a las transiciones compatibles y el inicio se elige al azar entre las mejores cadenas. Con `--seed` se puede repetir una sesión; con `variety: 0` siempre sale la misma.
 - La lista que ve el usuario mantiene el orden original de la sesión; los temas cargados se tachan en su sitio (decisión tras probar en real: reordenar la lista parecía "recargar la sesión").
 - Recálculo (interno, solo afecta a las sugerencias): el plan pasa a ser "temas cargados en orden + resto encadenado desde el último cargado". Si se carga el tema sugerido (no comodín), el plan no cambia. Un tema que no es de la sesión pero sí de la biblioteca sirve de ancla para la siguiente sugerencia (no se tacha nada).
 - Destachar: vuelve a estar disponible y, si era el último cargado, el ancla pasa al anterior.

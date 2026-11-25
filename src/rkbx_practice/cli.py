@@ -68,6 +68,8 @@ def _session_settings(cfg: AppConfig, args):
         s.camelot_strictness = args.strictness
     if getattr(args, "no_half_double", False):
         s.allow_half_double_tempo = False
+    if getattr(args, "variety", None) is not None:
+        s.variety = args.variety
     if getattr(args, "wildcard", None) is not None:
         s.wildcard_probability = args.wildcard
     return s
@@ -303,6 +305,7 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--strictness", choices=STRICTNESS_LEVELS)
         sp.add_argument("--no-half-double", action="store_true", help="No comparar a mitad/doble tempo")
         sp.add_argument("--wildcard", type=float, help="Probabilidad de comodín (0..1)")
+        sp.add_argument("--variety", type=float, help="Variedad entre sesiones (0 = siempre igual)")
 
     sp = sub.add_parser("session", help="Genera una sesión de práctica")
     sp.add_argument("name", help="Carpeta o playlist")

@@ -15,7 +15,8 @@
     "camelot_enabled": true,
     "camelot_strictness": "moderate",
     "wildcard_probability": 0.15,
-    "optimize_time_budget_s": 1.0
+    "optimize_time_budget_s": 1.0,
+    "variety": 0.5
   },
   "live": {
     "poll_interval_ms": 20,
