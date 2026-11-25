@@ -111,15 +111,16 @@ def test_generate_show_from_structure(tmp_path):
     assert ev[33].fx == "chase" and ev[33].params["bpm"] == "live"          # pico
     assert ev[97].fx == "breathe"
     assert ev[129].fx == "build" and ev[129].params["dur_ms"] == 16000      # 32 beats a 120 BPM
-    assert ev[157].fx == "strobe" and ev[157].params["dur_ms"] == 2000      # último compás
-    assert ev[161].fx == "flash" and "golpe" in ev[161].label               # golpe del drop
-    assert ev[162].fx == "pulse" and ev[162].params["color"] == "rojo"
+    assert ev[157].fx == "strobe" and ev[157].params["dur_ms"] == 1500      # último compás hasta el apagón
+    assert ev[160].fx == "off" and ev[160].label == "Apagón"                # apagón 1 beat antes del drop
+    assert ev[161].fx == "chase" and ev[161].params["color"] == "rojo"      # se encienden en movimiento
+    assert 162 not in ev
     assert ev[225].fx == "breathe"
     store = ShowStore(tmp_path)
     store.save(show)
     again = store.load("1001")
     assert [(e.beat, e.fx, e.params) for e in again.events] == [(e.beat, e.fx, e.params) for e in show.events]
-    assert json.loads(store.path("1001").read_text())["format_version"] == 2
+    assert json.loads(store.path("1001").read_text())["format_version"] == 3
 
 
 def test_config_rules_override_defaults():
@@ -330,7 +331,7 @@ def test_old_show_files_are_regenerated_unless_manual(library, tmp_path):
     (tmp_path / "1001.json").write_text(json.dumps(old))
     mgr = LightsManager(cfg, library, BeatGridCache(), sender=Sender(), analyzer=lambda p: techno_analysis())
     show = mgr.load_or_generate(library.track("1001"))
-    assert show.format_version == 2 and any(e.fx == "build" for e in show.events)
+    assert show.format_version == 3 and any(e.fx == "build" for e in show.events)
     old["events"].append({"beat": 9, "label": "manual", "source": "manual", "fx": "flash", "params": {}})
     (tmp_path / "1001.json").write_text(json.dumps(old))
     show = mgr.load_or_generate(library.track("1001"))
@@ -362,7 +363,15 @@ def test_cli_regenerate_keeps_manual(library, tmp_path, monkeypatch):
     assert cli.main(["--config", str(cfg_path), "--library-json", lib_json,
                      "lights", "regenerate", "--playlist", "Favoritos"]) == 0
     assert store.load("1001").events[0].source == "manual"          # conservado
-    assert store.load("1002").format_version == 2                    # regenerado
+    assert store.load("1002").format_version == 3                    # regenerado
     assert cli.main(["--config", str(cfg_path), "--library-json", lib_json,
                      "lights", "regenerate", "--playlist", "Favoritos", "--force"]) == 0
     assert store.load("1001").events[0].source == "structure"
+
+
+def test_drop_hit_can_be_reenabled():
+    a = techno_analysis()
+    rules = {"drop_hit": {"fx": "flash", "params": {"color": "blanco", "dur_ms": 400}},
+             "blackout": {"fx": "off", "params": {}, "beats": 2}}
+    ev = {e.beat: e for e in generate_show("1", "", a, rules).events}
+    assert ev[159].fx == "off" and ev[161].fx == "flash" and ev[162].fx == "chase"

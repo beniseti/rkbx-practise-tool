@@ -150,18 +150,21 @@
           "hz": 16
         }
       },
+      "blackout": {
+        "fx": "off",
+        "params": {},
+        "beats": 1
+      },
       "drop_hit": {
-        "fx": "flash",
-        "params": {
-          "color": "blanco",
-          "dur_ms": 400
-        }
+        "fx": null,
+        "params": {}
       },
       "drop": {
-        "fx": "pulse",
+        "fx": "chase",
         "params": {
           "color": "rojo",
-          "bpm": "live"
+          "bpm": "live",
+          "beats": 0.5
         }
       },
       "outro": {

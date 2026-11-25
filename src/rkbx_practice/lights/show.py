@@ -30,7 +30,7 @@ from pathlib import Path
 from .analysis import TrackAnalysis
 from .commands import LightCommand
 
-FORMAT_VERSION = 2   # 2: generado por estructura musical (papeles)
+FORMAT_VERSION = 3   # 2: estructura musical (papeles) · 3: apagón antes del drop + drop en movimiento
 
 
 @dataclass
@@ -85,19 +85,31 @@ DEFAULT_RULES: dict[str, dict] = {
     "breakdown": {"fx": "breathe", "params": {"color": "azul", "period_ms": 6000, "zones": "odd"}},
     "buildup": {"fx": "build", "params": {"color": "blanco", "dur_ms": "until_next"}},
     "pre_drop": {"fx": "strobe", "params": {"dur_ms": "until_next", "hz": 16}},
-    "drop_hit": {"fx": "flash", "params": {"color": "blanco", "dur_ms": 400}},
-    "drop": {"fx": "pulse", "params": {"color": "rojo", "bpm": "live"}},
+    # Subida → drop (Up → Chorus), pedido por el usuario: apagón momentáneo (`beats` beats antes
+    # del drop) y en el drop se encienden con un efecto en movimiento.
+    "blackout": {"fx": "off", "params": {}, "beats": 1},
+    "drop_hit": {"fx": None, "params": {}},
+    "drop": {"fx": "chase", "params": {"color": "rojo", "bpm": "live", "beats": 0.5}},
     "outro": {"fx": "breathe", "params": {"color": "azul", "period_ms": 6000}},
 }
 
 
 def effective_rules(rules: dict[str, dict] | None) -> dict[str, dict]:
     """Reglas por defecto con las de config.json encima (solo claves de papel conocidas)."""
-    out = {k: {"fx": v["fx"], "params": dict(v.get("params", {}))} for k, v in DEFAULT_RULES.items()}
+    def copy(v: dict) -> dict:
+        d = {"fx": v.get("fx"), "params": dict(v.get("params", {}))}
+        if "beats" in v:
+            d["beats"] = v["beats"]
+        return d
+
+    out = {k: copy(v) for k, v in DEFAULT_RULES.items()}
     for k, v in (rules or {}).items():
         key = k.lower()
         if key in out and isinstance(v, dict):
-            out[key] = {"fx": v.get("fx"), "params": dict(v.get("params", {}))}
+            merged = copy(v)
+            if "beats" not in merged and "beats" in out[key]:
+                merged["beats"] = out[key]["beats"]
+            out[key] = merged
     return out
 
 
@@ -147,14 +159,22 @@ def generate_show(track_id: str, title: str, analysis: TrackAnalysis,
         nxt = sections[k + 1] if k + 1 < len(sections) else None
         until = sec.end
         if sec.role == "drop":
-            add(sec.start, f"{sec.name_es} · golpe", "drop_hit", until)
-            add(sec.start + 1, sec.name_es, "drop", until)
+            if r.get("drop_hit", {}).get("fx"):
+                add(sec.start, f"{sec.name_es} · golpe", "drop_hit", until)
+                add(sec.start + 1, sec.name_es, "drop", until)
+            else:
+                add(sec.start, sec.name_es, "drop", until)
         else:
             add(sec.start, sec.name_es, sec.role, until)
         if sec.role == "buildup" and nxt is not None and nxt.role == "drop":
+            black = r.get("blackout", {})
+            gap = int(black.get("beats", 1)) if black.get("fx") else 0
+            dark = nxt.start - gap                       # apagón justo antes del drop
             pre = nxt.start - 4                          # último compás antes del drop
-            if pre > sec.start:
-                add(pre, "Pre-drop", "pre_drop", nxt.start)
+            if pre > sec.start and pre < dark:
+                add(pre, "Pre-drop", "pre_drop", dark)
+            if gap and dark > sec.start:
+                add(dark, "Apagón", "blackout", nxt.start)
     if not sections:
         # Sin estructura (no debería pasar con rejilla): solo cambios de energía.
         for c in analysis.changes:
