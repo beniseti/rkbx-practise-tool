@@ -50,3 +50,15 @@ def parse_params(text: str) -> dict:
 
 def format_params(params: dict) -> str:
     return " ".join(f"{k}={v}" for k, v in params.items())
+
+
+def resolve_live(params: dict, bpm: float | None) -> dict:
+    """Sustituye los valores "live" por el BPM actual (si no se sabe, se quita el parámetro)."""
+    out = {}
+    for k, v in params.items():
+        if v == "live":
+            if not bpm:
+                continue
+            v = round(float(bpm), 2)
+        out[k] = v
+    return out

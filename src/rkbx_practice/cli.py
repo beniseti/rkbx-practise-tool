@@ -310,6 +310,16 @@ def cmd_lights_show(cfg, args) -> int:
         raise SystemExit("No hay análisis de Rekordbox para este tema (¿está analizado?)")
     analysis = mgr.analyze(track)
     _out(f"{track.display}  [{mgr.store.path(track.id)}]")
+    if analysis is not None:
+        _out(f"Análisis: {len(analysis.phrases)} frases de Rekordbox · forma de onda: "
+             f"{analysis.source or 'no encontrada'}")
+        _out("Estructura:")
+        for sec in analysis.sections:
+            t0 = analysis.beat_time(sec.start) or 0.0
+            _out(f"  {analysis.bar_beat(sec.start):>7}  {int(t0 // 60)}:{t0 % 60:05.2f}  "
+                 f"{sec.name_es:<22} graves {sec.low:4.2f}  medios {sec.mid:4.2f}  agudos {sec.high:4.2f}  "
+                 f"subida {sec.trend:+.2f}")
+        _out("Eventos:")
     for e in show.sorted_events():
         when = ""
         if analysis is not None:

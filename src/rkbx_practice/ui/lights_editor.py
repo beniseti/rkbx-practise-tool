@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QHBoxLayou
 from . import theme
 
 from ..library.models import Track
-from ..lights.commands import LightCommand, format_params, parse_params
+from ..lights.commands import LightCommand, format_params, parse_params, resolve_live
 from ..lights.show import LightEvent, LightShow
 
 NO_FX = "(ninguno)"
@@ -22,6 +22,11 @@ PHRASE_COLORS = {
     "outro": "#2fa88a", "verse": "#3a9fb0", "bridge": "#c062c0",
 }
 ENERGY_CHANGE_COLORS = {"drop": "#ffffff", "break": "#7fb0ff"}
+ROLE_COLORS = {"intro": "#2f6fd6", "groove": "#7b52d9", "peak": "#e08a20", "breakdown": "#2a4f80",
+               "buildup": "#d8c020", "drop": "#e03030", "outro": "#2fa88a"}
+# Colores de las 3 bandas como en la forma de onda de 3 bandas de Rekordbox.
+BAND_COLORS = {"low": QColor(30, 110, 255, 150), "mid": QColor(255, 160, 40, 120),
+               "high": QColor(240, 240, 240, 110)}
 
 
 def phrase_color(label: str) -> QColor:
@@ -33,12 +38,13 @@ class TimelineWidget(QWidget):
 
     beatClicked = Signal(int)
 
-    PHRASE_H = 18
+    PHRASE_H = 16
+    ROLE_H = 16
     MARGIN = 6
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumHeight(130)
+        self.setMinimumHeight(170)
         self.setMouseTracking(True)
         self.analysis = None
         self.events: list[LightEvent] = []
@@ -113,24 +119,38 @@ class TimelineWidget(QWidget):
                 p.setPen(QColor("#ffffff"))
                 p.drawText(r.adjusted(3, 0, -2, 0), Qt.AlignVCenter | Qt.AlignLeft, ph.label)
 
-        # Energía de graves.
-        energy = self.analysis.beat_energy
-        h = phrase_top - top - 14
-        if energy:
-            path = QPainterPath(QPointF(self._x(1), phrase_top - 2))
-            for i, e in enumerate(energy):
-                path.lineTo(QPointF(self._x(i + 1), phrase_top - 2 - e * h))
-            path.lineTo(QPointF(self._x(len(energy)), phrase_top - 2))
+        # Papel de cada sección (estructura musical), en una franja sobre las frases.
+        role_top = phrase_top - self.ROLE_H - 2
+        from ..lights.structure import ROLE_NAMES_ES
+        for sec in getattr(self.analysis, "sections", []) or []:
+            r = QRectF(self._x(sec.start), role_top, self._x(sec.end) - self._x(sec.start), self.ROLE_H)
+            p.fillRect(r.adjusted(0, 0, -1, 0), QColor(ROLE_COLORS.get(sec.role, "#555555")))
+            if r.width() > 40:
+                p.setPen(QColor("#000000" if sec.role == "buildup" else "#ffffff"))
+                p.drawText(r.adjusted(3, 0, -2, 0), Qt.AlignVCenter | Qt.AlignLeft,
+                           ROLE_NAMES_ES.get(sec.role, sec.role))
+
+        # Energía por bandas (graves, medios, agudos), apiladas desde la franja de papeles.
+        bands = getattr(self.analysis, "bands", {}) or {}
+        if not bands and self.analysis.beat_energy:
+            bands = {"low": self.analysis.beat_energy}
+        h = role_top - top - 16
+        for name in ("high", "mid", "low"):
+            vals = bands.get(name)
+            if not vals:
+                continue
+            path = QPainterPath(QPointF(self._x(1), role_top - 2))
+            for i, e in enumerate(vals):
+                path.lineTo(QPointF(self._x(i + 1), role_top - 2 - e * h))
+            path.lineTo(QPointF(self._x(len(vals)), role_top - 2))
             path.closeSubpath()
-            p.fillPath(path, QBrush(QColor(42, 140, 255, 110)))
-            p.setPen(QPen(QColor(theme.ACCENT), 1))
-            p.drawPath(path)
+            p.fillPath(path, QBrush(BAND_COLORS[name]))
 
         # Cambios de energía (drop/break): línea fina.
         for c in self.analysis.changes:
             x = self._x(c.beat)
             p.setPen(QPen(QColor(ENERGY_CHANGE_COLORS.get(c.kind, "#ffffff")), 1, Qt.DashLine))
-            p.drawLine(QPointF(x, top + 12), QPointF(x, phrase_top))
+            p.drawLine(QPointF(x, top + 12), QPointF(x, role_top))
 
         # Eventos con efecto: triángulo arriba (amarillo; seleccionado en blanco).
         for ev in self.events:
@@ -170,6 +190,9 @@ class TimelineWidget(QWidget):
         beat = self._beat_at(x)
         near = self._near_event(x)
         phrase = next((ph.label for ph in reversed(self.analysis.phrases) if ph.beat <= beat), "—")
+        sec = next((x for x in getattr(self.analysis, "sections", []) if x.start <= beat < x.end), None)
+        if sec is not None:
+            phrase = f"{sec.name_es} · graves {sec.low:.2f}"
         t = self.analysis.beat_time(beat)
         text = f"Compás {self.analysis.bar_beat(beat)} · {int(t // 60)}:{t % 60:04.1f} · {phrase}" if t is not None else ""
         if near is not None and near.fx:
@@ -211,10 +234,12 @@ class LightsEditor(QDialog):
         self.timeline = TimelineWidget()
         self.timeline.beatClicked.connect(self._timeline_clicked)
         lay.addWidget(self.timeline)
-        legend = QLabel("  ".join(f"<span style='color:{c}'>■</span> {name.capitalize()}"
-                                  for name, c in PHRASE_COLORS.items())
-                        + "   <span style='color:#ffe14d'>▼</span> evento"
-                        + "   <span style='color:#ff8a00'>|</span> reproducción")
+        from ..lights.structure import ROLE_NAMES_ES
+        legend = QLabel("Estructura: " + "  ".join(
+            f"<span style='color:{c}'>■</span> {ROLE_NAMES_ES[r]}" for r, c in ROLE_COLORS.items())
+            + "<br>Bandas: <span style='color:#1e6eff'>■</span> graves  <span style='color:#ffa028'>■</span> medios"
+            + "  <span style='color:#f0f0f0'>■</span> agudos   ·   Frases de Rekordbox: franja inferior"
+            + "   <span style='color:#ffe14d'>▼</span> evento   <span style='color:#ff8a00'>|</span> reproducción")
         legend.setProperty("role", "dim")
         lay.addWidget(legend)
 
@@ -272,10 +297,17 @@ class LightsEditor(QDialog):
             self.table.setRowCount(0)
             self.timeline.set_data(None, [])
             return
-        n_phr = len(self.analysis.phrases) if self.analysis else 0
-        n_chg = len(self.analysis.changes) if self.analysis else 0
-        self.info.setText(f"{n_phr} frases y {n_chg} cambios de energía detectados · "
-                          f"archivo: {self.mgr.store.path(track.id)}")
+        a = self.analysis
+        if a is not None:
+            roles = [sec.role for sec in a.sections]
+            src = {"PWV7": "forma de onda de 3 bandas", "PWV5": "forma de onda (sin bandas)"}.get(
+                a.source, "sin forma de onda")
+            self.info.setText(f"{len(a.phrases)} frases · {len(a.sections)} secciones "
+                              f"({roles.count('drop')} drops, {roles.count('buildup')} subidas, "
+                              f"{roles.count('breakdown')} breakdowns) · {src} · "
+                              f"archivo: {self.mgr.store.path(track.id)}")
+        else:
+            self.info.setText(f"archivo: {self.mgr.store.path(track.id)}")
         self._fill()
 
     # --- línea de tiempo ------------------------------------------------
@@ -409,7 +441,10 @@ class LightsEditor(QDialog):
         fx = self.table.cellWidget(row, 3).currentText()
         if fx == NO_FX:
             return
-        cmd = LightCommand(fx, parse_params(self.table.cellWidget(row, 4).text()))
+        bpm = None
+        if self.position_provider is not None and self.track is not None:
+            bpm = self.track.bpm
+        cmd = LightCommand(fx, resolve_live(parse_params(self.table.cellWidget(row, 4).text()), bpm or 128.0))
         ok = self.mgr.sender.send(cmd)
         self.info.setText(("Enviado: " if ok else "NO enviado (¿conectado a la Wi-Fi del ESP32?): ")
                           + cmd.to_json().decode())

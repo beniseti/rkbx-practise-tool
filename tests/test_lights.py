@@ -52,19 +52,85 @@ def analysis():
                          changes=[EnergyChange(65, "drop", 4.5)])
 
 
-def test_generate_show_with_rules(tmp_path):
-    rules = LightsConfig().rules
-    show = generate_show("1001", "A - B", analysis(), rules)
-    by_beat = {e.beat: e for e in show.events}
-    assert by_beat[1].fx == "color"
-    assert by_beat[33].fx == "color" and by_beat[33].params == {"color": "verde"}   # «Verse 1» → regla «Verse»
-    assert by_beat[65].label == "Chorus + drop" and by_beat[65].fx == "flash"      # drop manda en el mismo beat
-    assert by_beat[129].fx == "color"
+# Tema sintético de techno: (frase, desde, hasta, graves, medios, agudos) por beat, a 120 BPM.
+TECHNO = [("Intro", 1, 33, .55, .30, .20), ("Chorus", 33, 97, .90, .50, .60),
+          ("Down", 97, 129, .05, .40, .30), ("Up", 129, 161, .05, None, None),
+          ("Chorus", 161, 225, 1.0, .60, .70), ("Outro", 225, 257, .50, .30, .20)]
+
+
+def techno_samples(n_beats=256):
+    cols = {"low": [], "mid": [], "high": []}
+    for _label, a, b, lo, mi, hi in TECHNO:
+        for beat in range(a, b):
+            if mi is None:                     # subida: medios y agudos crecen
+                k = (beat - a) / (b - a)
+                m, h = .3 + .5 * k, .2 + .7 * k
+            else:
+                m, h = mi, hi
+            for _ in range(75):               # 150 columnas/s × 0.5 s
+                cols["low"].append(lo)
+                cols["mid"].append(m)
+                cols["high"].append(h)
+    return cols
+
+
+def techno_analysis(with_phrases=True):
+    from rkbx_practice.lights.analysis import build_analysis
+    grid = BeatGrid.uniform(120.0, n_beats=256)
+    phrases = [Phrase(a, label) for label, a, *_ in TECHNO] if with_phrases else []
+    return build_analysis(grid, phrases, techno_samples(), "PWV7")
+
+
+def test_structure_roles_with_phrases():
+    a = techno_analysis()
+    assert [(s.start, s.role) for s in a.sections] == [
+        (1, "intro"), (33, "peak"), (97, "breakdown"), (129, "buildup"), (161, "drop"), (225, "outro")]
+
+
+def test_structure_roles_without_phrases():
+    a = techno_analysis(with_phrases=False)
+    roles = [(s.start, s.role) for s in a.sections]
+    assert (97, "buildup") in roles or (97, "breakdown") in roles
+    assert (161, "drop") in roles
+    assert roles[-1][1] == "outro"
+
+
+def test_up_then_chorus_is_drop_even_without_bands():
+    from rkbx_practice.lights.analysis import build_analysis
+    grid = BeatGrid.uniform(128.0, n_beats=128)
+    a = build_analysis(grid, [Phrase(1, "Intro"), Phrase(33, "Up"), Phrase(65, "Chorus")], {}, "")
+    assert [s.role for s in a.sections] == ["intro", "buildup", "drop"]
+
+
+def test_generate_show_from_structure(tmp_path):
+    a = techno_analysis()
+    show = generate_show("1001", "A - B", a, LightsConfig().rules)
+    ev = {e.beat: e for e in show.events}
+    assert ev[1].fx == "breathe"
+    assert ev[33].fx == "pulse" and ev[33].params["bpm"] == "live"
+    assert ev[97].fx == "breathe"
+    assert ev[129].fx == "build" and ev[129].params["dur_ms"] == 16000      # 32 beats a 120 BPM
+    assert ev[157].fx == "strobe" and ev[157].params["dur_ms"] == 2000      # último compás
+    assert ev[161].fx == "flash" and "golpe" in ev[161].label               # golpe del drop
+    assert ev[162].fx == "pulse" and ev[162].params["color"] == "rojo"
+    assert ev[225].fx == "breathe"
     store = ShowStore(tmp_path)
     store.save(show)
     again = store.load("1001")
     assert [(e.beat, e.fx, e.params) for e in again.events] == [(e.beat, e.fx, e.params) for e in show.events]
-    assert json.loads(store.path("1001").read_text())["format_version"] == 1
+    assert json.loads(store.path("1001").read_text())["format_version"] == 2
+
+
+def test_config_rules_override_defaults():
+    from rkbx_practice.lights.show import effective_rules
+    r = effective_rules({"Drop": {"fx": "rainbow", "params": {"dur_ms": 8000}}, "Chorus": {"fx": "x"}})
+    assert r["drop"]["fx"] == "rainbow" and "chorus" not in r and r["groove"]["fx"] == "pulse"
+
+
+def test_live_bpm_is_resolved_when_sending():
+    from rkbx_practice.lights.commands import resolve_live
+    assert resolve_live({"bpm": "live", "color": "rojo"}, 131.234) == {"bpm": 131.23, "color": "rojo"}
+    assert resolve_live({"bpm": "live"}, None) == {}
 
 
 def test_params_text():
@@ -245,3 +311,25 @@ def test_engine_status_explains_why_nothing_is_sent():
     assert "preparando" in eng.status                      # el tema B no tiene archivo
     play(eng, 1.0, 2.0, pos0=0.0)
     assert "próximo: Chorus → strobe" in eng.status
+
+
+def test_old_show_files_are_regenerated_unless_manual(library, tmp_path):
+    from rkbx_practice.library.anlz import BeatGridCache
+    from rkbx_practice.lights.manager import LightsManager
+    cfg = AppConfig()
+    cfg.lights.events_dir = str(tmp_path)
+
+    class Sender:
+        def send(self, cmd):
+            pass
+
+    old = {"format_version": 1, "track_id": "1001", "events": [{"beat": 5, "label": "Chorus", "source": "phrase",
+                                                                 "fx": "strobe", "params": {}}]}
+    (tmp_path / "1001.json").write_text(json.dumps(old))
+    mgr = LightsManager(cfg, library, BeatGridCache(), sender=Sender(), analyzer=lambda p: techno_analysis())
+    show = mgr.load_or_generate(library.track("1001"))
+    assert show.format_version == 2 and any(e.fx == "build" for e in show.events)
+    old["events"].append({"beat": 9, "label": "manual", "source": "manual", "fx": "flash", "params": {}})
+    (tmp_path / "1001.json").write_text(json.dumps(old))
+    show = mgr.load_or_generate(library.track("1001"))
+    assert show.format_version == 1                       # con eventos a mano no se toca

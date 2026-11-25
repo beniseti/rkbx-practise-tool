@@ -102,25 +102,21 @@ class LightsConfig:
     simulator_leds: int = 60
     send_to_simulator: bool = False   # además del ESP32, enviar al simulador local
     # Catálogo de efectos del ESP32 con sus parámetros por defecto (cada uno los suyos).
+    # "live" = BPM real del deck al enviar; "until_next" = hasta la siguiente sección.
     effects: dict[str, dict] = field(default_factory=lambda: {
-        "flash": {"color": "blanco", "dur_ms": 200},
-        "strobe": {"dur_ms": 1000},
-        "rainbow": {"dur_ms": 4000},
         "color": {"color": "azul"},
+        "pulse": {"color": "morado", "bpm": "live"},
+        "breathe": {"color": "azul", "period_ms": 4000},
+        "build": {"color": "blanco", "dur_ms": 8000},
+        "flash": {"color": "blanco", "dur_ms": 200},
+        "strobe": {"dur_ms": 1000, "hz": 12},
+        "rainbow": {"dur_ms": 4000},
         "off": {},
     })
-    # Qué efecto se asigna automáticamente a cada tipo de cambio (editable luego tema a tema).
-    rules: dict[str, dict] = field(default_factory=lambda: {
-        "Intro": {"fx": "color", "params": {"color": "azul"}},
-        "Up": {"fx": "rainbow", "params": {"dur_ms": 4000}},
-        "Down": {"fx": "color", "params": {"color": "morado"}},
-        "Chorus": {"fx": "strobe", "params": {"dur_ms": 1000}},
-        "Verse": {"fx": "color", "params": {"color": "verde"}},
-        "Bridge": {"fx": "color", "params": {"color": "naranja"}},
-        "Outro": {"fx": "off", "params": {}},
-        "drop": {"fx": "flash", "params": {"color": "blanco", "dur_ms": 200}},
-        "break": {"fx": "color", "params": {"color": "azul"}},
-    })
+    # Efecto por papel musical (intro, groove, peak, breakdown, buildup, drop, outro) y momentos
+    # especiales (drop_hit, pre_drop). Lo que no se ponga aquí usa los valores por defecto de
+    # lights/show.py (DEFAULT_RULES).
+    rules: dict[str, dict] = field(default_factory=dict)
 
 
 @dataclass

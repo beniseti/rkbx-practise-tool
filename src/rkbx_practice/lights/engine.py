@@ -22,7 +22,7 @@ from ..config import LightsConfig, MixerConfig, DetectionConfig
 from ..detection.volume import LeadDeckTracker, effective_volume
 from ..library.anlz import BeatGrid
 from ..state import LiveSnapshot
-from .commands import LightCommand
+from .commands import LightCommand, resolve_live
 from .show import LightEvent, LightShow
 
 log = logging.getLogger(__name__)
@@ -133,6 +133,7 @@ class LightsEngine:
         for ev in fired:
             cmd = ev.command()
             if cmd is not None:
+                cmd = LightCommand(cmd.fx, resolve_live(cmd.params, d.bpm))
                 self.send(cmd)
                 self.last_sent = (ev, snap.t)
         self._set_status(f"Deck {lead} sonando · {len(self._events)} eventos · {nxt_txt}")

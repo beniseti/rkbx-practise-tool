@@ -62,6 +62,9 @@ class LightsManager:
 
     def load_or_generate(self, track: Track, save: bool = True) -> LightShow | None:
         show = self.store.load(track.id)
+        if show is not None and show.outdated:
+            log.info("Luces: regenerando %s (archivo de una versión anterior)", track.display)
+            show = None
         if show is None:
             show = self.generate(track)
             if show is not None and save:

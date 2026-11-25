@@ -49,6 +49,10 @@ class TrackAnalysis:
     phrases: list[Phrase] = field(default_factory=list)
     beat_energy: list[float] = field(default_factory=list)   # 0..1 por beat (graves)
     changes: list[EnergyChange] = field(default_factory=list)
+    # Energía por beat de cada banda («low», «mid», «high»), 0..1 normalizada en el tema.
+    bands: dict[str, list[float]] = field(default_factory=dict)
+    sections: list = field(default_factory=list)              # structure.Section
+    source: str = ""                                          # "PWV7", "PWV5" o ""
 
     def beat_time(self, beat: int) -> float | None:
         i = beat - 1
@@ -80,8 +84,10 @@ def energy_per_beat(samples: list[float], grid: BeatGrid,
         a, b = int(t * rate), max(int(t_end * rate), int(t * rate) + 1)
         chunk = samples[a:b]
         out.append(sum(chunk) / len(chunk) if chunk else 0.0)
-    peak = max(out) if out else 0.0
-    return [v / peak for v in out] if peak > 0 else out
+    # Normalización robusta: percentil 95 (un pico suelto no aplasta el resto del tema).
+    ref = sorted(out)[int(0.95 * (len(out) - 1))] if out else 0.0
+    ref = ref or (max(out) if out else 0.0)
+    return [min(1.0, v / ref) for v in out] if ref > 0 else out
 
 
 def detect_changes(grid: BeatGrid, energy: list[float], window_beats: int = 16,
@@ -122,13 +128,17 @@ def _strength(ratio: float) -> float:
 # ---------------------------------------------------------------------------
 # Lectura de ANLZ con pyrekordbox
 # ---------------------------------------------------------------------------
-def _pwv7_low(tag) -> list[float]:
-    """PWV7 (3 bandas): 3 bytes por columna; se usa la banda de graves (0..1)."""
+def _pwv7_bands(tag) -> dict[str, list[float]]:
+    """PWV7 (3 bandas): 3 bytes por columna en el orden documentado medios, agudos, graves."""
     raw = _raw_entries(tag)
     if not raw:
-        return []
-    # Orden documentado: medios, agudos, graves.
-    return [raw[i + 2] / 255.0 for i in range(0, len(raw) - 2, 3)]
+        return {}
+    n = len(raw) // 3
+    return {
+        "mid": [raw[3 * i] / 255.0 for i in range(n)],
+        "high": [raw[3 * i + 1] / 255.0 for i in range(n)],
+        "low": [raw[3 * i + 2] / 255.0 for i in range(n)],
+    }
 
 
 def _pwv5_height(tag) -> list[float]:
@@ -163,7 +173,8 @@ def read_track_analysis(anlz_path: str | Path, grid: BeatGrid | None = None) -> 
     if grid is None:
         return None
     phrases: list[Phrase] = []
-    samples: list[float] = []
+    samples: dict[str, list[float]] = {}
+    source = ""
     ext = _sibling(path, ".EXT")
     if ext is not None:
         try:
@@ -176,7 +187,9 @@ def read_track_analysis(anlz_path: str | Path, grid: BeatGrid | None = None) -> 
             except Exception as exc:  # noqa: BLE001
                 log.debug("Sin frases en %s: %s", ext, exc)
             try:
-                samples = _pwv5_height(f.get_tag("PWV5"))
+                h = _pwv5_height(f.get_tag("PWV5"))
+                if h:
+                    samples, source = {"low": h, "mid": h, "high": h}, "PWV5"
             except Exception:  # noqa: BLE001
                 pass
         except Exception as exc:  # noqa: BLE001
@@ -184,12 +197,22 @@ def read_track_analysis(anlz_path: str | Path, grid: BeatGrid | None = None) -> 
     ex2 = _sibling(path, ".2EX")
     if ex2 is not None:
         try:
-            low = _pwv7_low(AnlzFile.parse_file(ex2).get_tag("PWV7"))
-            if low:
-                samples = low
+            b = _pwv7_bands(AnlzFile.parse_file(ex2).get_tag("PWV7"))
+            if b:
+                samples, source = b, "PWV7"
         except Exception as exc:  # noqa: BLE001
             log.debug("Sin PWV7 en %s: %s", ex2, exc)
-    energy = energy_per_beat(samples, grid) if samples else []
+    return build_analysis(grid, sorted(phrases, key=lambda p: p.beat), samples, source)
+
+
+def build_analysis(grid: BeatGrid, phrases: list[Phrase], samples: dict[str, list[float]],
+                   source: str = "") -> TrackAnalysis:
+    """Analysis completo a partir de rejilla, frases y columnas de forma de onda por banda."""
+    from .structure import classify_sections
+    bands = {k: energy_per_beat(v, grid) for k, v in samples.items() if v}
+    energy = bands.get("low", [])
     changes = detect_changes(grid, energy) if energy else []
-    return TrackAnalysis(grid=grid, phrases=sorted(phrases, key=lambda p: p.beat),
-                         beat_energy=energy, changes=changes)
+    a = TrackAnalysis(grid=grid, phrases=phrases, beat_energy=energy, changes=changes,
+                      bands=bands, source=source)
+    a.sections = classify_sections(a)
+    return a

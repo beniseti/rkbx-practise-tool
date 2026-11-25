@@ -67,73 +67,96 @@
     "simulator_http_port": 8765,
     "simulator_leds": 60,
     "effects": {
+      "color": {
+        "color": "azul"
+      },
+      "pulse": {
+        "color": "morado",
+        "bpm": "live"
+      },
+      "breathe": {
+        "color": "azul",
+        "period_ms": 4000
+      },
+      "build": {
+        "color": "blanco",
+        "dur_ms": 8000
+      },
       "flash": {
         "color": "blanco",
         "dur_ms": 200
       },
       "strobe": {
-        "dur_ms": 1000
+        "dur_ms": 1000,
+        "hz": 12
       },
       "rainbow": {
         "dur_ms": 4000
       },
-      "color": {
-        "color": "azul"
-      },
       "off": {}
     },
     "rules": {
-      "Intro": {
-        "fx": "color",
+      "intro": {
+        "fx": "breathe",
         "params": {
-          "color": "azul"
+          "color": "azul",
+          "period_ms": 4000
         }
       },
-      "Up": {
-        "fx": "rainbow",
+      "groove": {
+        "fx": "pulse",
         "params": {
-          "dur_ms": 4000
+          "color": "morado",
+          "bpm": "live"
         }
       },
-      "Down": {
-        "fx": "color",
+      "peak": {
+        "fx": "pulse",
         "params": {
-          "color": "morado"
+          "color": "naranja",
+          "bpm": "live"
         }
       },
-      "Chorus": {
+      "breakdown": {
+        "fx": "breathe",
+        "params": {
+          "color": "azul",
+          "period_ms": 6000
+        }
+      },
+      "buildup": {
+        "fx": "build",
+        "params": {
+          "color": "blanco",
+          "dur_ms": "until_next"
+        }
+      },
+      "pre_drop": {
         "fx": "strobe",
         "params": {
-          "dur_ms": 1000
+          "dur_ms": "until_next",
+          "hz": 16
         }
       },
-      "Verse": {
-        "fx": "color",
-        "params": {
-          "color": "verde"
-        }
-      },
-      "Bridge": {
-        "fx": "color",
-        "params": {
-          "color": "naranja"
-        }
-      },
-      "Outro": {
-        "fx": "off",
-        "params": {}
-      },
-      "drop": {
+      "drop_hit": {
         "fx": "flash",
         "params": {
           "color": "blanco",
-          "dur_ms": 200
+          "dur_ms": 400
         }
       },
-      "break": {
-        "fx": "color",
+      "drop": {
+        "fx": "pulse",
         "params": {
-          "color": "azul"
+          "color": "rojo",
+          "bpm": "live"
+        }
+      },
+      "outro": {
+        "fx": "breathe",
+        "params": {
+          "color": "azul",
+          "period_ms": 6000
         }
       }
     }

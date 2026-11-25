@@ -106,31 +106,51 @@ function hsv(h, s, v) {
 }
 
 // --- Estado de las luces -------------------------------------------------
-// base: color permanente (efectos "color"/"off"). overlay: efecto temporal (flash, strobe, rainbow…).
-const S = { base: [0,0,0], baseFrom: [0,0,0], baseAt: 0, overlay: null, count: 0 };
+// base: modo de fondo permanente ("solid", "pulse" al BPM, "breathe"); cambia con color/off/pulse/breathe.
+// overlay: efecto temporal encima (flash, strobe, rainbow, build…).
+const S = { base: { mode: "solid", color: [0,0,0], since: 0 }, prevBase: null, baseAt: 0,
+            overlay: null, count: 0 };
+
+function setBase(b, now) { S.prevBase = S.base; S.base = { ...b, since: now }; S.baseAt = now; S.overlay = null; }
 
 function apply(cmd) {
   const now = performance.now();
   const fx = String(cmd.fx || "?").toLowerCase();
   const dur = Number(cmd.dur_ms ?? cmd.duration_ms ?? 0);
-  const setBase = (c) => { S.baseFrom = currentBase(now); S.base = c; S.baseAt = now; };
+  const color = (d) => parseColor(cmd.color, d);
   switch (fx) {
-    case "color": setBase(parseColor(cmd.color, [0,80,255])); S.overlay = null; break;
-    case "off": setBase([0,0,0]); S.overlay = null; break;
-    case "flash": S.overlay = { fx, start: now, dur: dur || 200, color: parseColor(cmd.color, [255,255,255]) }; break;
-    case "strobe": S.overlay = { fx, start: now, dur: dur || 1000, color: parseColor(cmd.color, [255,255,255]),
-                                 hz: Number(cmd.hz || 12) }; break;
+    case "color": setBase({ mode: "solid", color: color([0,80,255]) }, now); break;
+    case "off": setBase({ mode: "solid", color: [0,0,0] }, now); break;
+    case "pulse": setBase({ mode: "pulse", color: color([150,0,255]), bpm: Number(cmd.bpm) || 128 }, now); break;
+    case "breathe": setBase({ mode: "breathe", color: color([0,80,255]), period: Number(cmd.period_ms) || 4000 }, now); break;
+    case "flash": S.overlay = { fx, start: now, dur: dur || 200, color: color([255,255,255]) }; break;
+    case "strobe": S.overlay = { fx, start: now, dur: dur || 1000, color: color([255,255,255]), hz: Number(cmd.hz || 12) }; break;
     case "rainbow": S.overlay = { fx, start: now, dur: dur || 4000, speed: Number(cmd.speed || 0.5) }; break;
+    case "build": S.overlay = { fx, start: now, dur: dur || 8000, color: color([255,255,255]) }; break;
     default: S.overlay = { fx: "unknown", start: now, dur: dur || 600, color: [160, 0, 255] };
   }
   document.getElementById("nowFx").textContent = fx;
-  document.getElementById("nowBase").textContent =
-    S.base.every(v => v === 0) ? "apagado" : `rgb(${S.base.map(Math.round).join(", ")})`;
+  const b = S.base, c = `rgb(${b.color.map(Math.round).join(", ")})`;
+  document.getElementById("nowBase").textContent = b.color.every(v => v === 0) ? "apagado"
+    : b.mode === "pulse" ? `pulso ${c} a ${b.bpm} BPM` : b.mode === "breathe" ? `respiración ${c}` : c;
+}
+
+function baseColor(b, now) {
+  if (!b) return [0,0,0];
+  if (b.mode === "pulse") {                       // golpe en cada beat que decae
+    const beat = 60000 / b.bpm, ph = ((now - b.since) % beat) / beat;
+    return scale(b.color, 0.25 + 0.75 * Math.pow(1 - ph, 3));
+  }
+  if (b.mode === "breathe") {
+    const ph = ((now - b.since) % b.period) / b.period;
+    return scale(b.color, 0.15 + 0.85 * (0.5 - 0.5 * Math.cos(ph * 2 * Math.PI)));
+  }
+  return b.color;
 }
 
 function currentBase(now) {
-  const k = Math.min(1, (now - S.baseAt) / 150);   // fundido de 150 ms entre colores base
-  return mix(S.baseFrom, S.base, k);
+  const k = Math.min(1, (now - S.baseAt) / 150);   // fundido de 150 ms entre fondos
+  return mix(baseColor(S.prevBase, now), baseColor(S.base, now), k);
 }
 
 function ledColors(now, n) {
@@ -147,8 +167,15 @@ function ledColors(now, n) {
   }
   if (o.fx === "rainbow") {
     const t = (now - o.start) / 1000 * o.speed;
-    const fade = Math.min(1, (1 - p) * 6);           // vuelve a la base al final
+    const fade = Math.min(1, (1 - p) * 6);
     return out.map((_, i) => mix(base, hsv((i / n + t) % 1, 1, 1), fade));
+  }
+  if (o.fx === "build") {                          // tensión: sube el brillo y el parpadeo se acelera
+    const hz = 1 + 15 * p * p;
+    const on = Math.floor((now - o.start) / 1000 * hz * 2) % 2 === 0;
+    const lit = Math.round(n * (0.2 + 0.8 * p));    // se van encendiendo LEDs desde el centro
+    return out.map((_, i) => Math.abs(i - (n - 1) / 2) <= lit / 2
+      ? mix(scale(base, 0.3), o.color, on ? 0.25 + 0.75 * p : 0.1 * p) : scale(base, 0.3));
   }
   return out.map(() => mix(base, o.color, Math.sin(p * Math.PI)));
 }
@@ -234,14 +261,15 @@ fetch("/config").then(r => r.json()).then(cfg => {
   document.getElementById("leds").value = cfg.leds || 60;
   document.getElementById("udp").textContent = `UDP ${cfg.udp}`;
   const effects = Object.keys(cfg.effects || {}).length ? cfg.effects
-    : { flash: { color: "blanco", dur_ms: 200 }, strobe: { dur_ms: 1000 }, rainbow: { dur_ms: 4000 },
-        color: { color: "azul" }, off: {} };
+    : { color: { color: "azul" }, pulse: { color: "morado", bpm: 128 }, breathe: { color: "azul", period_ms: 4000 },
+        build: { color: "blanco", dur_ms: 8000 }, flash: { color: "blanco", dur_ms: 200 },
+        strobe: { dur_ms: 1000, hz: 12 }, rainbow: { dur_ms: 4000 }, off: {} };
   const box = document.getElementById("tests");
   Object.entries(effects).forEach(([fx, params]) => {
     const row = document.createElement("div"); row.className = "row";
     row.innerHTML = `<b></b><input><button>Enviar</button>`;
     row.querySelector("b").textContent = fx;
-    const input = row.querySelector("input"); input.value = paramsText(params);
+    const input = row.querySelector("input"); input.value = paramsText(params).replace("bpm=live", "bpm=128");
     row.querySelector("button").onclick = () => fetch("/send", { method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fx, ...parseParams(input.value) }) });
