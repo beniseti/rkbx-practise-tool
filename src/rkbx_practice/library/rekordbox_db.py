@@ -12,6 +12,7 @@ Reglas (CLAUDE.md §3):
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -56,6 +57,12 @@ def _default_db_dir() -> Path | None:
                 return Path(conf["db_dir"])
     except Exception:  # noqa: BLE001  pragma: no cover
         pass
+    # Ruta estándar en Windows.
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        p = Path(appdata) / "Pioneer" / "rekordbox"
+        if (p / "master.db").exists():
+            return p
     return None
 
 
@@ -113,6 +120,10 @@ def open_rekordbox_library(cfg: LibraryConfig) -> InMemoryLibrary:
             original = db_dir / "master.db"
     if original is not None and not original.exists():
         raise LibraryError(f"No se encuentra master.db en {original}")
+    if original is None and cfg.copy_before_open:
+        # Sin ruta no podemos copiar; no abrimos el original para no arriesgarlo.
+        raise LibraryError("No se encuentra master.db automáticamente. Indica su ruta en "
+                           "config.json → library.master_db_path")
 
     kwargs = {}
     if cfg.db_key:

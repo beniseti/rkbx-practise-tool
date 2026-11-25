@@ -39,6 +39,19 @@ class PracticeController:
         self.poller: LivePoller | None = None
         self.unknown_loads: list[TrackLoaded] = []
 
+    def use_demo_source(self, track_s: float = 30.0, blend_s: float = 8.0) -> None:
+        """Sustituye la memoria de Rekordbox por la simulación (ver live/demo.py)."""
+        from .live.demo import DemoSource
+
+        def next_track():
+            s = self.session
+            if s is not None and s.suggestion is not None:
+                return s.suggestion.track
+            tracks = [t for t in self.library.all_tracks() if t.bpm and t.camelot]
+            return tracks[0] if tracks else None
+
+        self.source_factory = lambda: DemoSource(self.library, next_track, track_s, blend_s)
+
     # --- sesiones -----------------------------------------------------
     def node_label(self, node_id: str) -> str:
         parts = []

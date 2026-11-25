@@ -100,13 +100,13 @@ class SessionRecorder:
             in_t = self.library.track(ev.in_track_id) if (self.library and ev.in_track_id) else None
             compat = None
             if out_t is not None and in_t is not None:
-                info = transition(out_t, in_t, self.settings)
+                tr_info = transition(out_t, in_t, self.settings)
                 compat = {
-                    "compatible": info.compatible,
-                    "bpm_compatible": info.bpm.compatible,
-                    "bpm_diff_pct": round(info.bpm.diff_pct, 2),
-                    "tempo_multiplier": info.bpm.multiplier,
-                    "key_relation": info.key.value if info.key else None,
+                    "compatible": tr_info.compatible,
+                    "bpm_compatible": tr_info.bpm.compatible,
+                    "bpm_diff_pct": round(tr_info.bpm.diff_pct, 2),
+                    "tempo_multiplier": tr_info.bpm.multiplier,
+                    "key_relation": tr_info.key.value if tr_info.key else None,
                 }
             d["transitions"].append({
                 "start": _iso(ev.start), "end": _iso(ev.end),

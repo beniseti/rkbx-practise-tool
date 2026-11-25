@@ -10,6 +10,7 @@ Ejemplos:
     python -m rkbx_practice history list
     python -m rkbx_practice offsets
 
+`--demo` simula dos decks pinchando las sugerencias (sin Rekordbox).
 `--library-json archivo.json` usa una biblioteca exportada en lugar de master.db
 (útil para probar sin Rekordbox; hay una de ejemplo en data/demo_library.json).
 """
@@ -139,6 +140,8 @@ def cmd_live(cfg, args) -> int:
     from .app import PracticeController
     lib = _load(cfg, args)
     ctl = PracticeController(cfg, lib)
+    if args.demo:
+        ctl.use_demo_source()
     if args.session:
         ctl.generate(_find(lib, args.session).id, _session_settings(cfg, args))
     state = {"status": None, "snap": None, "events": []}
@@ -220,8 +223,12 @@ def cmd_ui(cfg, args) -> int:
         from .ui.main_window import run_ui
     except ImportError as exc:
         raise SystemExit(f"Falta PySide6 ({exc}). Instálalo con: pip install PySide6") from exc
+    from .app import PracticeController
     lib = _load(cfg, args)
-    return run_ui(cfg, lib)
+    ctl = PracticeController(cfg, lib)
+    if args.demo:
+        ctl.use_demo_source()
+    return run_ui(cfg, lib, ctl)
 
 
 def cmd_history_list(cfg, args) -> int:
@@ -276,6 +283,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="rkbx-practice", description="Asistente de práctica para Rekordbox")
     p.add_argument("--config", help="Ruta a config.json")
     p.add_argument("--library-json", help="Usar una biblioteca exportada (JSON) en lugar de master.db")
+    p.add_argument("--demo", action="store_true",
+                   help="Simular los decks (sin Rekordbox) para probar la ventana y las detecciones")
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)
 

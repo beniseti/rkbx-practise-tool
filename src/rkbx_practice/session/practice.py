@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import random
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from ..config import SessionConfig
@@ -120,7 +120,10 @@ class PracticeSession:
         played = [self._by_id[tid] for tid in self.load_order]
         rest = [t for t in self.plan if t.id not in self.struck]
         if anchor is not None and rest:
-            rest = order_tracks(rest, self.settings, start=anchor, rng=self.rng)
+            # Recálculo en directo: presupuesto de optimización corto para no bloquear la UI.
+            quick = replace(self.settings,
+                            optimize_time_budget_s=min(self.settings.optimize_time_budget_s, 0.25))
+            rest = order_tracks(rest, quick, start=anchor, rng=self.rng)
         self.plan = played + rest
 
     def _planned_next(self) -> Track | None:

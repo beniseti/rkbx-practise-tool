@@ -64,15 +64,19 @@ class BassSwapDetector:
                 changed.append((d, "up"))
 
         for d, kind in changed:
-            df = frame.decks[d]
+            st = self._st[d]
+            own_t = st.last_up if kind == "up" else st.last_down
+            own_used = st.used_up if kind == "up" else st.used_down
+            if own_t in own_used:
+                continue                      # ya emparejado en este mismo sondeo
+            partner = self._find_partner(frame, d, "down" if kind == "up" else "up")
+            if partner is None:
+                continue
+            own_used.add(own_t)
             if kind == "up":
-                partner = self._find_partner(frame, d, "down")
-                if partner is not None:
-                    events.append(self._make(frame, from_deck=partner, to_deck=d))
+                events.append(self._make(frame, from_deck=partner, to_deck=d))
             else:
-                partner = self._find_partner(frame, d, "up")
-                if partner is not None:
-                    events.append(self._make(frame, from_deck=d, to_deck=partner))
+                events.append(self._make(frame, from_deck=d, to_deck=partner))
         return events
 
     def _find_partner(self, frame: Frame, deck: int, want: str) -> int | None:
