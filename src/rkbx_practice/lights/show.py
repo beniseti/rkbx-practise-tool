@@ -30,7 +30,7 @@ from pathlib import Path
 from .analysis import TrackAnalysis
 from .commands import LightCommand
 
-FORMAT_VERSION = 3   # 2: estructura musical (papeles) · 3: apagón antes del drop + drop en movimiento
+FORMAT_VERSION = 4   # 2: estructura · 3: apagón + drop en movimiento · 4: fondos siempre en movimiento
 
 
 @dataclass
@@ -79,10 +79,12 @@ class LightShow:
 # Valores especiales: "until_next" = duración en ms hasta la siguiente sección;
 # "live" = el BPM real del deck en el momento de enviar.
 DEFAULT_RULES: dict[str, dict] = {
-    "intro": {"fx": "breathe", "params": {"color": "azul", "period_ms": 4000}},
+    # Nunca estático (pedido por el usuario): todos los fondos se mueven (ola, parpadeos,
+    # alternancia, persecución). El único momento quieto es el apagón antes del drop.
+    "intro": {"fx": "wave", "params": {"color": "azul", "color2": "morado", "bpm": "live", "beats": 4}},
     "groove": {"fx": "alternate", "params": {"color": "morado", "color2": "azul", "bpm": "live"}},
     "peak": {"fx": "chase", "params": {"color": "naranja", "bpm": "live", "beats": 1}},
-    "breakdown": {"fx": "breathe", "params": {"color": "azul", "period_ms": 6000, "zones": "odd"}},
+    "breakdown": {"fx": "twinkle", "params": {"color": "azul", "color2": "morado", "density": 0.15, "bpm": "live"}},
     "buildup": {"fx": "build", "params": {"color": "blanco", "dur_ms": "until_next"}},
     "pre_drop": {"fx": "strobe", "params": {"dur_ms": "until_next", "hz": 16}},
     # Subida → drop (Up → Chorus), pedido por el usuario: apagón momentáneo (`beats` beats antes
@@ -90,7 +92,7 @@ DEFAULT_RULES: dict[str, dict] = {
     "blackout": {"fx": "off", "params": {}, "beats": 1},
     "drop_hit": {"fx": None, "params": {}},
     "drop": {"fx": "chase", "params": {"color": "rojo", "bpm": "live", "beats": 0.5}},
-    "outro": {"fx": "breathe", "params": {"color": "azul", "period_ms": 6000}},
+    "outro": {"fx": "wave", "params": {"color": "azul", "color2": "morado", "bpm": "live", "beats": 8}},
 }
 
 

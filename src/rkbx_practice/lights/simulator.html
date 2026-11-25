@@ -156,6 +156,10 @@ function apply(cmd) {
                                   color2: parseColor(cmd.color2, [0,0,0]), bpm, zone: z }); break;
       case "chase": setBase({ mode: "chase", color: color([255,120,0]), bpm, beats: Number(cmd.beats) || 1,
                               pos, count: targets.length }); break;
+      case "wave": setBase({ mode: "wave", color: color([0,80,255]), color2: parseColor(cmd.color2, [0,0,0]),
+                             bpm, beats: Number(cmd.beats) || 4 }); break;
+      case "twinkle": setBase({ mode: "twinkle", color: color([0,80,255]), color2: parseColor(cmd.color2, [0,0,0]),
+                                bpm, density: Number(cmd.density) || 0.15 }); break;
       case "flash": over({ fx, dur: dur || 200, color: color([255,255,255]) }); break;
       case "strobe": over({ fx, dur: dur || 1000, color: color([255,255,255]), hz: Number(cmd.hz || 12) }); break;
       case "rainbow": over({ fx, dur: dur || 4000, speed: Number(cmd.speed || 0.5) }); break;
@@ -172,11 +176,16 @@ function describeBases() {
   const modes = {};
   S.zones.forEach(z => { const b = z.base, k = b.color.every(v => v === 0) && b.mode === "solid" ? "apagado" : b.mode;
                          modes[k] = (modes[k] || 0) + 1; });
-  const names = { solid: "color", pulse: "pulso", breathe: "respiración", alternate: "alterno", chase: "persecución" };
+  const names = { solid: "color", pulse: "pulso", breathe: "respiración", alternate: "alterno", chase: "persecución",
+                  wave: "ola", twinkle: "destellos" };
   return Object.entries(modes).map(([k, n]) => `${names[k] || k} ×${n}`).join(" · ");
 }
 
-function baseColor(b, now) {
+// Pseudoaleatorio estable por LED (para los destellos).
+function hash(x) { x = Math.sin(x * 12.9898) * 43758.5453; return x - Math.floor(x); }
+
+// x: posición del LED en su tira (0..1 a lo largo de las 3 secciones); s: tira (0..); k: LED global.
+function baseColor(b, now, x = 0, s = 0, k = 0) {
   if (!b) return [0,0,0];
   const beatMs = 60000 / (b.bpm || 128);
   if (b.mode === "pulse") {                       // golpe en cada beat que decae
@@ -193,6 +202,19 @@ function baseColor(b, now) {
     const mine = (b.zone + beat) % 2 === 0;
     return mine ? scale(b.color, 0.35 + 0.65 * Math.pow(1 - ph, 2)) : scale(b.color2, 0.35);
   }
+  if (b.mode === "wave") {                        // ola que recorre las tiras: una vuelta cada `beats` beats
+    const cycle = beatMs * b.beats;
+    const ph = ((now - b.since) % cycle) / cycle;
+    const v = 0.5 + 0.5 * Math.sin(2 * Math.PI * (x * 1.5 - ph) + s * 0.9);
+    return mix(scale(b.color2, 0.25), b.color, Math.pow(v, 2));
+  }
+  if (b.mode === "twinkle") {                     // destellos aleatorios sobre un fondo tenue
+    const slot = Math.floor((now - b.since) / (beatMs / 2));        // nuevo reparto cada medio beat
+    const ph = ((now - b.since) % (beatMs / 2)) / (beatMs / 2);
+    const on = hash(k * 7.13 + slot * 1.37) < b.density;
+    const bg = scale(b.color2, 0.12 + 0.08 * Math.sin((now - b.since) / 900 + k));
+    return on ? mix(bg, b.color, 1 - ph) : bg;
+  }
   if (b.mode === "chase") {                       // la luz recorre las zonas, una por paso
     const step = Math.floor((now - b.since) / (beatMs * b.beats));
     const ph = ((now - b.since) % (beatMs * b.beats)) / (beatMs * b.beats);
@@ -201,14 +223,16 @@ function baseColor(b, now) {
   return b.color;
 }
 
-function zoneBase(st, now) {
-  const k = Math.min(1, (now - st.baseAt) / 150);   // fundido de 150 ms entre fondos
-  return mix(baseColor(st.prevBase, now), baseColor(st.base, now), k);
+function zoneBase(st, now, x, s, k) {
+  const f = Math.min(1, (now - st.baseAt) / 150);   // fundido de 150 ms entre fondos
+  return mix(baseColor(st.prevBase, now, x, s, k), baseColor(st.base, now, x, s, k), f);
 }
 
 // Color de un LED: índice dentro de la zona (i de n), para efectos que recorren la zona.
 function ledColor(st, now, i, n, z) {
-  const base = zoneBase(st, now);
+  const s = Math.floor((z - 1) / L.sections), c = (z - 1) % L.sections;
+  const x = (c * n + i + 0.5) / (L.sections * n);          // posición a lo largo de la tira
+  const base = zoneBase(st, now, x, s, (z - 1) * n + i);
   const o = st.overlay;
   if (!o) return base;
   const p = (now - o.start) / o.dur;
@@ -327,6 +351,8 @@ fetch("/config").then(r => r.json()).then(cfg => {
   const effects = Object.keys(cfg.effects || {}).length ? cfg.effects
     : { color: { color: "azul" }, pulse: { color: "morado", bpm: 128 }, breathe: { color: "azul", period_ms: 4000 },
         alternate: { color: "morado", color2: "azul", bpm: 128 }, chase: { color: "naranja", bpm: 128, beats: 1 },
+        wave: { color: "azul", color2: "morado", bpm: 128, beats: 4 },
+        twinkle: { color: "azul", color2: "morado", density: 0.15, bpm: 128 },
         build: { color: "blanco", dur_ms: 8000 }, flash: { color: "blanco", dur_ms: 200 },
         strobe: { dur_ms: 1000, hz: 12 }, rainbow: { dur_ms: 4000 }, off: {} };
   const box = document.getElementById("tests");

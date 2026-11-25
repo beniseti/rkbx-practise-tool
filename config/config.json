@@ -97,6 +97,18 @@
         "color2": "azul",
         "bpm": "live"
       },
+      "wave": {
+        "color": "azul",
+        "color2": "morado",
+        "bpm": "live",
+        "beats": 4
+      },
+      "twinkle": {
+        "color": "azul",
+        "color2": "morado",
+        "density": 0.15,
+        "bpm": "live"
+      },
       "chase": {
         "color": "naranja",
         "bpm": "live",
@@ -106,10 +118,12 @@
     },
     "rules": {
       "intro": {
-        "fx": "breathe",
+        "fx": "wave",
         "params": {
           "color": "azul",
-          "period_ms": 4000
+          "color2": "morado",
+          "bpm": "live",
+          "beats": 4
         }
       },
       "groove": {
@@ -129,11 +143,12 @@
         }
       },
       "breakdown": {
-        "fx": "breathe",
+        "fx": "twinkle",
         "params": {
           "color": "azul",
-          "period_ms": 6000,
-          "zones": "odd"
+          "color2": "morado",
+          "density": 0.15,
+          "bpm": "live"
         }
       },
       "buildup": {
@@ -168,10 +183,12 @@
         }
       },
       "outro": {
-        "fx": "breathe",
+        "fx": "wave",
         "params": {
           "color": "azul",
-          "period_ms": 6000
+          "color2": "morado",
+          "bpm": "live",
+          "beats": 8
         }
       }
     },

@@ -115,6 +115,8 @@ class LightsConfig:
         "strobe": {"dur_ms": 1000, "hz": 12},
         "rainbow": {"dur_ms": 4000},
         "alternate": {"color": "morado", "color2": "azul", "bpm": "live"},
+        "wave": {"color": "azul", "color2": "morado", "bpm": "live", "beats": 4},
+        "twinkle": {"color": "azul", "color2": "morado", "density": 0.15, "bpm": "live"},
         "chase": {"color": "naranja", "bpm": "live", "beats": 1},
         "off": {},
     })

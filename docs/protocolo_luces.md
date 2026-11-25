@@ -33,7 +33,9 @@ Cada zona tiene su propio estado: un comando solo cambia las zonas a las que va.
 
 ## Efectos
 
-**De fondo** (se quedan hasta el siguiente efecto de fondo en esa zona):
+**De fondo** (se quedan hasta el siguiente efecto de fondo en esa zona). Regla del usuario: **las
+luces nunca se quedan estáticas**; los fondos por defecto son siempre efectos en movimiento
+(`wave`, `twinkle`, `alternate`, `chase`, `pulse`). `color`/`breathe` existen pero no se usan por defecto.
 
 | fx | Parámetros | Qué hace |
 |---|---|---|
@@ -43,6 +45,8 @@ Cada zona tiene su propio estado: un comando solo cambia las zonas a las que va.
 | `breathe` | `color`, `period_ms` | Sube y baja suavemente |
 | `alternate` | `color`, `color2`, `bpm` | Zonas pares e impares se turnan en cada beat |
 | `chase` | `color`, `bpm`, `beats` | La luz recorre las zonas indicadas, un paso cada `beats` beats |
+| `wave` | `color`, `color2`, `bpm`, `beats` | Ola de `color` sobre `color2` que recorre cada tira (una vuelta cada `beats` beats; cada tira algo desfasada) |
+| `twinkle` | `color`, `color2`, `density`, `bpm` | Destellos aleatorios de `color` (fracción `density` de LEDs, nuevo reparto cada medio beat) sobre `color2` tenue |
 
 **Temporales** (encima del fondo, durante `dur_ms`; luego vuelve el fondo):
 
