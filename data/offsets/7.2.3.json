@@ -53,7 +53,7 @@
           "0x138"
         ],
         "type": "f64",
-        "_note": "Mismo objeto de deck que el BPM (+0x138). Tipo f64 en segundos SUPUESTO: comprobar con --validate."
+        "_note": "Mismo objeto de deck que el BPM (+0x138). f64 en segundos. Confirmado con --validate."
       }
     },
     "2": {
@@ -107,7 +107,7 @@
           "0x138"
         ],
         "type": "f64",
-        "_note": "Mismo objeto de deck que el BPM (+0x138). Tipo f64 en segundos SUPUESTO: comprobar con --validate."
+        "_note": "Mismo objeto de deck que el BPM (+0x138). f64 en segundos. Confirmado con --validate."
       }
     }
   },
