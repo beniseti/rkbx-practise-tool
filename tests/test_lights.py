@@ -1,5 +1,6 @@
 import json
 import socket
+from pathlib import Path
 import time
 
 import pytest
@@ -345,3 +346,23 @@ def test_expand_zones_3x3():
     assert expand_zones("seccion:3") == [3, 6, 9]
     assert expand_zones("1,5,9,12") == [1, 5, 9]
     assert expand_zones([2, 8]) == [2, 8]
+
+
+def test_cli_regenerate_keeps_manual(library, tmp_path, monkeypatch):
+    from rkbx_practice import cli
+    from rkbx_practice.lights import manager as mgr_mod
+    monkeypatch.setattr(mgr_mod, "read_track_analysis", lambda p: techno_analysis())
+    monkeypatch.setattr(mgr_mod.LightsManager.__init__, "__defaults__", (None, lambda p: techno_analysis()))
+    cfg_path = tmp_path / "config" / "config.json"
+    cfg_path.parent.mkdir()
+    cfg_path.write_text(json.dumps({"lights": {"events_dir": str(tmp_path / "lights")}}))
+    store = ShowStore(tmp_path / "lights")
+    store.save(LightShow("1001", events=[LightEvent(9, "mío", "manual", "flash", {})]))
+    lib_json = str(Path(__file__).parent / "fixtures" / "library.json")
+    assert cli.main(["--config", str(cfg_path), "--library-json", lib_json,
+                     "lights", "regenerate", "--playlist", "Favoritos"]) == 0
+    assert store.load("1001").events[0].source == "manual"          # conservado
+    assert store.load("1002").format_version == 2                    # regenerado
+    assert cli.main(["--config", str(cfg_path), "--library-json", lib_json,
+                     "lights", "regenerate", "--playlist", "Favoritos", "--force"]) == 0
+    assert store.load("1001").events[0].source == "structure"

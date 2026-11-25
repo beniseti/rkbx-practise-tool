@@ -331,6 +331,38 @@ def cmd_lights_show(cfg, args) -> int:
     return 0
 
 
+def cmd_lights_regenerate(cfg, args) -> int:
+    """Rehace los archivos de efectos con el análisis y las reglas actuales."""
+    from .app import PracticeController
+    lib = _load(cfg, args)
+    ctl = PracticeController(cfg, lib)
+    mgr = ctl.lights
+    if args.playlist:
+        tracks = lib.tracks_of(_find(lib, args.playlist).id)
+    elif args.only_existing:
+        ids = {p.stem for p in mgr.store.dir.glob("*.json")}
+        tracks = [t for t in lib.all_tracks() if t.id in ids]
+    else:
+        tracks = [t for t in lib.all_tracks() if t.analysis_path]
+    done = kept = failed = 0
+    for i, t in enumerate(tracks, 1):
+        old = mgr.store.load(t.id)
+        if old is not None and not args.force and any(e.source == "manual" for e in old.events):
+            kept += 1
+            continue
+        show = mgr.generate(t)
+        if show is None:
+            failed += 1
+            continue
+        mgr.save(show)
+        done += 1
+        if i % 25 == 0 or i == len(tracks):
+            _out(f"  {i}/{len(tracks)}…")
+    _out(f"Regenerados: {done} · conservados (con eventos a mano; usa --force para rehacerlos): {kept} · "
+         f"sin análisis de Rekordbox: {failed}")
+    return 0
+
+
 def cmd_lights_send(cfg, args) -> int:
     from .lights.commands import LightCommand, parse_params
     from .lights.udp import UdpSender
@@ -470,6 +502,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("track", help="ID del tema o parte del título")
     sp.add_argument("--regenerate", action="store_true", help="Volver a generar desde el análisis")
     sp.set_defaults(func=cmd_lights_show)
+    sp = li.add_parser("regenerate", help="Rehace los archivos de efectos con el análisis y reglas actuales")
+    sp.add_argument("--playlist", help="Solo los temas de esta carpeta/playlist")
+    sp.add_argument("--only-existing", action="store_true",
+                    help="Solo los temas que ya tienen archivo de efectos")
+    sp.add_argument("--force", action="store_true", help="Rehacer también los que tienen eventos a mano")
+    sp.set_defaults(func=cmd_lights_regenerate)
     sp = li.add_parser("send", help="Envía un efecto al ESP32 (prueba)")
     sp.add_argument("fx", help="Efecto, p. ej. flash")
     sp.add_argument("params", nargs="*", help="Parámetros, p. ej. color=rojo dur_ms=200")
