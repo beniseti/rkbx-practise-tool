@@ -148,7 +148,8 @@ def first_scan(mem: Memory, dtype: str, predicate: Callable[[np.ndarray], np.nda
             continue
         if step == dt.itemsize:
             arr = np.frombuffer(data[:usable], dtype=dt)
-            idx = np.nonzero(predicate(arr))[0]
+            with np.errstate(invalid="ignore", over="ignore"):
+                idx = np.nonzero(predicate(arr))[0]
             addrs.append(base + idx.astype(np.uint64) * dt.itemsize)
             vals.append(arr[idx])
         else:
@@ -157,7 +158,8 @@ def first_scan(mem: Memory, dtype: str, predicate: Callable[[np.ndarray], np.nda
                 if n <= 0:
                     continue
                 arr = np.frombuffer(data[off:off + n * dt.itemsize], dtype=dt)
-                idx = np.nonzero(predicate(arr))[0]
+                with np.errstate(invalid="ignore", over="ignore"):
+                    idx = np.nonzero(predicate(arr))[0]
                 addrs.append(base + off + idx.astype(np.uint64) * dt.itemsize)
                 vals.append(arr[idx])
     a = np.concatenate(addrs).astype(np.uint64) if addrs else np.zeros(0, np.uint64)
