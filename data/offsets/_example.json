@@ -1,0 +1,27 @@
+{
+  "_comment": "PLANTILLA. Los archivos que empiezan por '_' se ignoran. Las direcciones de abajo son FICTICIAS: genera las reales con tools/offset_detect para tu versión exacta de Rekordbox y guárdalas como data/offsets/<versión>.json (p. ej. 7.2.20.json).",
+  "version": "0.0.0",
+  "module": "rekordbox.exe",
+  "pointer_size": 8,
+  "decks": {
+    "1": {
+      "track_path": {"chain": ["0x0000000", "0x00", "0x000"], "type": "ptr_utf8", "max_len": 512},
+      "bpm":        {"chain": ["0x0000000", "0x00", "0x000"], "type": "f32"},
+      "position":   {"chain": ["0x0000000", "0x00", "0x000"], "type": "f64"},
+      "is_master":  {"chain": ["0x0000000", "0x00", "0x000"], "type": "bool"},
+      "fader":      {"chain": ["0x0000000", "0x00", "0x000"], "type": "f32", "map": [0.0, 1.0]},
+      "eq_low":     {"chain": ["0x0000000", "0x00", "0x000"], "type": "f32", "map": [0.0, 1.0]}
+    },
+    "2": {
+      "track_path": {"chain": ["0x0000000", "0x00", "0x000"], "type": "ptr_utf8", "max_len": 512},
+      "bpm":        {"chain": ["0x0000000", "0x00", "0x000"], "type": "f32"},
+      "position":   {"chain": ["0x0000000", "0x00", "0x000"], "type": "f64"},
+      "is_master":  {"chain": ["0x0000000", "0x00", "0x000"], "type": "bool"},
+      "fader":      {"chain": ["0x0000000", "0x00", "0x000"], "type": "f32", "map": [0.0, 1.0]},
+      "eq_low":     {"chain": ["0x0000000", "0x00", "0x000"], "type": "f32", "map": [0.0, 1.0]}
+    }
+  },
+  "global": {
+    "crossfader":  {"chain": ["0x0000000", "0x00", "0x000"], "type": "f32", "map": [0.0, 1.0]}
+  }
+}

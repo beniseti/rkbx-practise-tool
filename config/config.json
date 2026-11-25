@@ -1,0 +1,55 @@
+{
+  "rekordbox": {
+    "process_name": "rekordbox.exe",
+    "decks": 2,
+    "offsets_dir": "data/offsets"
+  },
+  "library": {
+    "master_db_path": null,
+    "db_key": null,
+    "copy_before_open": true
+  },
+  "session": {
+    "bpm_tolerance_pct": 4.0,
+    "allow_half_double_tempo": true,
+    "camelot_enabled": true,
+    "camelot_strictness": "moderate",
+    "wildcard_probability": 0.15,
+    "optimize_time_budget_s": 1.0
+  },
+  "live": {
+    "poll_interval_ms": 20,
+    "reconnect_interval_s": 3,
+    "position_jump_tolerance_s": 0.25,
+    "max_consecutive_read_errors": 50
+  },
+  "mixer": {
+    "crossfader_enabled": false,
+    "crossfader_assign": {"1": "A", "2": "B", "3": "A", "4": "B"}
+  },
+  "detection": {
+    "fader_zero_threshold": 0.05,
+    "preview_touch_max_ms": 1500,
+    "transition_stable_s": 4,
+    "cut_max_beats": 1,
+    "cut_group_gap_beats": 2,
+    "bass_swap_window_beats": 4,
+    "eq_low_threshold": 0.3,
+    "on_beat_tolerance_ms": 60,
+    "bass_swap_bar_tolerance_beats": 0.5,
+    "default_bpm": 120.0
+  },
+  "history": {
+    "dir": "history"
+  },
+  "ui": {
+    "always_on_top": true,
+    "start_compact": false
+  },
+  "lights": {
+    "enabled": false,
+    "esp32_ip": "192.168.4.1",
+    "esp32_port": 4210,
+    "latency_compensation_ms": 0
+  }
+}
