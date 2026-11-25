@@ -44,6 +44,16 @@
         "type": "ptr_utf8",
         "max_len": 512,
         "_note": "Lista de decks: deck N en 0x8*N. Hallada con el paso 'vuelve a cargar el primer tema'."
+      },
+      "position": {
+        "chain": [
+          "0x58d38c8",
+          "0x0",
+          "0x2b0",
+          "0x138"
+        ],
+        "type": "f64",
+        "_note": "Mismo objeto de deck que el BPM (+0x138). Tipo f64 en segundos SUPUESTO: comprobar con --validate."
       }
     },
     "2": {
@@ -88,6 +98,16 @@
         "type": "ptr_utf8",
         "max_len": 512,
         "_note": "Muestra el tema actual (confirmado con `live`). Pendiente de confirmar tras reinicio."
+      },
+      "position": {
+        "chain": [
+          "0x58d38c8",
+          "0x8",
+          "0x2b0",
+          "0x138"
+        ],
+        "type": "f64",
+        "_note": "Mismo objeto de deck que el BPM (+0x138). Tipo f64 en segundos SUPUESTO: comprobar con --validate."
       }
     }
   },

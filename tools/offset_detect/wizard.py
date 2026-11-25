@@ -732,16 +732,22 @@ def compare_decks(console: Console, out_dir: Path, version: str, field: str,
     for c in b:
         b_by_len.setdefault(len(c), []).append(c)
     pairs = []
+    seen = set()
     for ca in a:
         for cb in b_by_len.get(len(ca), []):
             diff = [i for i, (x, y) in enumerate(zip(ca, cb)) if x != y]
-            if len(diff) == 1 and diff[0] > 0:
+            key = (tuple(ca), tuple(cb))
+            if len(diff) == 1 and diff[0] > 0 and key not in seen:
+                seen.add(key)
                 pairs.append((ca, cb))
     pairs.sort(key=lambda p: (len(p[0]), sum(int(x, 16) for x in p[0][1:])))
     console.say(f"{len(pairs)} pares de {field} que solo difieren en el índice del deck:")
     for ca, cb in pairs[:limit]:
         i = next(i for i, (x, y) in enumerate(zip(ca, cb)) if x != y)
-        console.say(f"  deck {deck_a}: {ca}   deck {deck_b}: {cb}   (cambia el nivel {i}: {ca[i]} → {cb[i]})")
+        meta = meta_of(cands[cand_key(field, deck_a)], ca)
+        extra = f" {meta['extra']}" if meta.get("extra") else ""
+        console.say(f"  deck {deck_a}: {ca}   deck {deck_b}: {cb}   (cambia el nivel {i}: {ca[i]} → {cb[i]})"
+                    f"   tipo {meta['type']}{extra}")
     return pairs
 
 
