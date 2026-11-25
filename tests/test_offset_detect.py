@@ -204,3 +204,16 @@ def test_rerun_after_restart_keeps_only_common_chains(tmp_path):
     chains = load_candidates(candidates_path(tmp_path, "7.2.3"))["fader:1"]["chains"]
     assert chains == [["0x5000", "0x10", "0x30"]]
     assert json.loads(out.read_text())["decks"]["1"]["fader"]["chain"] == ["0x5000", "0x10", "0x30"]
+
+
+def test_anchor_search_finds_path_from_stable_object():
+    from tools.offset_detect.pointerscan import anchor_objects
+    rb = FakeRekordbox(seed=6)
+    mem = FakeProcessMemory(rb.m, MOD_SIZE)
+    pmap = PointerMap.build(mem)
+    anchors = anchor_objects(mem, [0x5000, 0x10, 0x20])        # cadena "estable" del BPM del deck 1
+    assert [a for a, _ in anchors] == [HEAP, HEAP + 0x1000]
+    chains = find_chains(mem, pmap, HEAP + 0x1030, max_depth=3, anchors=anchors, anchors_only=True)
+    assert chains[0] == [0x5000, 0x10, 0x30]
+    assert all(c[0] == 0x5000 for c in chains)
+    assert resolve(mem, chains[0]) == HEAP + 0x1030

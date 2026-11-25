@@ -67,15 +67,52 @@ class PointerMap:
         return [int(x) for x in s]
 
 
+def anchor_objects(mem: Memory, chain: list[int]) -> list[tuple[int, list[int]]]:
+    """Objetos intermedios de una cadena estable: [(dirección del objeto, prefijo de cadena)].
+
+    Para `[b, o1, ..., on]`: P1 = *(módulo+b) con prefijo [b]; P2 = *(P1+o1) con prefijo
+    [b, o1]; ... Una cadena que llegue a `Pk + x` se escribe `prefijo_k + [x]`.
+    """
+    import struct
+    out = []
+    addr = mem.module_base + chain[0]
+    prefix = [chain[0]]
+    for off in chain[1:]:
+        data = mem.read(addr, mem.pointer_size)
+        if data is None:
+            break
+        ptr = struct.unpack("<Q" if mem.pointer_size == 8 else "<I", data)[0]
+        if ptr == 0:
+            break
+        out.append((ptr, list(prefix)))
+        addr = ptr + off
+        prefix.append(off)
+    return out
+
+
 def find_chains(mem: Memory, pmap: PointerMap, target: int, max_depth: int = 4,
                 max_offset: int = 0x800, max_nodes: int = 3000, max_results: int = 50,
-                module_slots: list[tuple[int, int]] | None = None) -> list[list[int]]:
-    """Cadenas `[base_relativa, o1, ..., on]` que llegan a `target`, ordenadas de más corta a más larga."""
+                module_slots: list[tuple[int, int]] | None = None,
+                anchors: list[tuple[int, list[int]]] | None = None,
+                anchors_only: bool = False) -> list[list[int]]:
+    """Cadenas `[base_relativa, o1, ..., on]` que llegan a `target`.
+
+    Con `anchors` (objetos de cadenas ya comprobadas como estables, ver `anchor_objects`)
+    también se aceptan caminos que salen de esos objetos; esas cadenas van primero.
+    """
     mod_lo, mod_hi = mem.module_base, mem.module_base + mem.module_size
     results: list[list[int]] = []
-    # Una dirección estática que ES el objetivo (variable global): cadena de un solo elemento.
-    if mod_lo <= target < mod_hi:
+    anchored: list[list[int]] = []
+    anchors = anchors or []
+
+    def check_anchor(addr: int, offsets: list[int]) -> None:
+        for obj, prefix in anchors:
+            if obj <= addr <= obj + max_offset:
+                anchored.append(prefix + [addr - obj] + offsets)
+
+    if mod_lo <= target < mod_hi and not anchors_only:
         results.append([target - mod_lo])
+    check_anchor(target, [])
     frontier: list[tuple[int, list[int]]] = [(target, [])]
     seen = {target}
     for _depth in range(max_depth):
@@ -87,16 +124,16 @@ def find_chains(mem: Memory, pmap: PointerMap, target: int, max_depth: int = 4,
             for v, slot in sorted(zip(vals.tolist(), slots.tolist()), key=lambda x: addr - x[0]):
                 new_offsets = [addr - v] + offsets
                 if mod_lo <= slot < mod_hi:
-                    results.append([slot - mod_lo] + new_offsets)
-                    if len(results) >= max_results:
-                        return _rank(results)
+                    if not anchors_only and len(results) < max_results:
+                        results.append([slot - mod_lo] + new_offsets)
                 elif slot not in seen and len(nxt) < max_nodes:
                     seen.add(slot)
+                    check_anchor(slot, new_offsets)
                     nxt.append((slot, new_offsets))
         frontier = nxt
-        if not frontier:
+        if not frontier or (len(results) >= max_results and not anchors):
             break
-    return _rank(results)
+    return _rank(anchored)[:max_results] + _rank(results)
 
 
 def _rank(chains: list[list[int]]) -> list[list[int]]:

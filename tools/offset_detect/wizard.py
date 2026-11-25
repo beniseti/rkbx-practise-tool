@@ -236,10 +236,35 @@ def _slot_strings(mem: Memory, slots: list[int]) -> dict[int, tuple[str, bool]]:
 # ---------------------------------------------------------------------------
 # Cadenas y archivo final
 # ---------------------------------------------------------------------------
+def load_anchors(console: Console, mem: Memory, offsets_file: Path, fields: list[str],
+                 decks: list[int]) -> list[tuple[int, list[int]]]:
+    """Objetos intermedios de las cadenas (estables) de `fields` para los decks indicados."""
+    from .pointerscan import anchor_objects
+    if not offsets_file.exists():
+        console.say(f"No existe {offsets_file}")
+        return []
+    data = json.loads(offsets_file.read_text(encoding="utf-8"))
+    anchors: list[tuple[int, list[int]]] = []
+    for deck in decks:
+        for field in fields:
+            spec = data.get("decks", {}).get(str(deck), {}).get(field) or data.get("global", {}).get(field)
+            if not spec:
+                console.say(f"    (sin cadena de {field} para el deck {deck}; no se usa como ancla)")
+                continue
+            objs = anchor_objects(mem, [int(x, 16) for x in spec["chain"]])
+            console.say(f"    ancla {field} deck {deck}: {len(objs)} objetos")
+            anchors += objs
+    if not anchors:
+        console.say("No se pudo resolver ninguna ancla (¿hay un tema cargado en el deck?)")
+    return anchors
+
+
 def chain_for(console: Console, mem: Memory, pmap: PointerMap, address: int, label: str) -> list[list[int]]:
     """Todas las cadenas estáticas hacia `address` (la primera es la más corta)."""
+    anchors = SEARCH.get("anchors") or []
     chains = find_chains(mem, pmap, address, max_depth=SEARCH["max_depth"], max_offset=SEARCH["max_offset"],
-                         max_results=SEARCH["max_results"], max_nodes=SEARCH["max_nodes"])
+                         max_results=SEARCH["max_results"], max_nodes=SEARCH["max_nodes"],
+                         anchors=anchors, anchors_only=bool(anchors))
     if not chains:
         console.say(f"    ✗ {label}: sin cadena de punteros estática (prueba con más profundidad)")
         return []
@@ -581,6 +606,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="Niveles máximos de la cadena de punteros (por defecto 6)")
     p.add_argument("--max-offset", type=lambda x: int(x, 0), default=SEARCH["max_offset"],
                    help="Desplazamiento máximo por nivel (por defecto 0x1000)")
+    p.add_argument("--anchor", nargs="+", metavar="CAMPO",
+                   help="Buscar solo caminos que salgan de los objetos de campos ya estables del "
+                        "archivo de offsets (p. ej. --anchor bpm). Mucho más fiable tras reiniciar.")
     p.add_argument("--recheck", action="store_true",
                    help="Tras reiniciar Rekordbox: filtra las cadenas candidatas y se queda con las estables")
     args = p.parse_args(argv)
@@ -592,6 +620,11 @@ def main(argv: list[str] | None = None) -> int:
         console.say(f"No se pudo abrir {args.process}: {exc}")
         return 1
     version = normalize_version(mem.version()) or "desconocida"
+    if args.anchor:
+        SEARCH["anchors"] = load_anchors(console, mem, Path(args.out_dir) / f"{version}.json",
+                                         args.anchor, args.decks)
+        if not SEARCH["anchors"]:
+            return 1
     if args.validate:
         validate_file(console, mem, Path(args.validate))
         return 0
