@@ -161,6 +161,7 @@ class PracticeController:
                 listener.on_status(s)
 
             def on_snapshot(self, s):
+                controller.recorder.sample(s)
                 lights = controller._lights
                 if lights is not None and lights.engine.enabled:
                     try:

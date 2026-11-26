@@ -7,6 +7,7 @@ Solo biblioteca estándar. Escucha en 127.0.0.1 (solo este PC):
 - ``/api/session/<id>``       JSON de la sesión
 - ``/audio/<id>``             audio, con peticiones por rangos (para saltar a cualquier punto)
 - ``/peaks/<id>``             forma de onda resumida (1 byte por pico)
+- ``/mixer/<id>``             faders y EQ de cada deck en el tiempo
 
 `<id>` es el nombre base de los archivos (``session-20261126-213000``); solo se sirven archivos
 del histórico con ese nombre.
@@ -34,6 +35,8 @@ CHUNK = 256 * 1024
 def session_list(history_dir: Path) -> list[dict]:
     out = []
     for path in sorted(history_dir.glob("session-*.json"), reverse=True):
+        if not ID_RE.match(path.stem):          # p. ej. `<sesión>.mix.json`
+            continue
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001
@@ -90,7 +93,8 @@ class _Handler(BaseHTTPRequestHandler):
         found = self._session(sid)
         if not found:
             return None
-        name = ((found[1].get("audio") or {}).get(key)) or ""
+        data = found[1]
+        name = (data.get(key) if key == "mixer_file" else (data.get("audio") or {}).get(key)) or ""
         if not name or "/" in name or "\\" in name or name.startswith("."):
             return None
         p = self.history_dir / name
@@ -161,6 +165,12 @@ class _Handler(BaseHTTPRequestHandler):
                     ctype = AUDIO_TYPES.get(p.suffix.lower()) or mimetypes.guess_type(p.name)[0] \
                         or "application/octet-stream"
                     self._serve_file(p, ctype)
+            elif len(parts) == 2 and parts[0] == "mixer":
+                p = self._file_for(parts[1], "mixer_file")
+                if p is None:
+                    self._json({"error": "sin registro del mezclador"}, 404)
+                else:
+                    self._send(200, p.read_bytes(), "application/json; charset=utf-8")
             elif len(parts) == 2 and parts[0] == "peaks":
                 p = self._file_for(parts[1], "peaks_file")
                 if p is None:

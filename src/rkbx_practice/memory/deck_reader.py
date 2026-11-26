@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 _DECK_ATTR = {
     "track_path": "track_path", "track_id": "track_id", "bpm": "bpm",
     "position": "position_s", "is_master": "is_master", "fader": "fader", "eq_low": "eq_low",
+    "eq_mid": "eq_mid", "eq_high": "eq_high",
 }
 
 

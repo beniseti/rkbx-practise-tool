@@ -46,7 +46,8 @@ log = logging.getLogger(__name__)
 
 NUMERIC_TYPES = {"f32", "f64", "i32", "u32", "u8", "bool"}
 STRING_TYPES = {"utf8", "utf16", "ptr_utf8", "ptr_utf16"}
-DECK_FIELDS = {"track_path", "track_id", "bpm", "position", "is_master", "fader", "eq_low"}
+DECK_FIELDS = {"track_path", "track_id", "bpm", "position", "is_master", "fader", "eq_low",
+               "eq_mid", "eq_high"}   # eq_mid / eq_high opcionales (revisión de mezclas)
 GLOBAL_FIELDS = {"crossfader", "master_deck"}
 
 

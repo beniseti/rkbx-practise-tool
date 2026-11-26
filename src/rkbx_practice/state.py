@@ -16,7 +16,9 @@ class DeckState:
     position_s: float | None = None    # posición de reproducción
     is_master: bool | None = None
     fader: float | None = None         # 0..1
-    eq_low: float | None = None        # 0..1 (0 = graves cortados)
+    eq_low: float | None = None        # 0..1 (0 = graves cortados, 0.5 = centro)
+    eq_mid: float | None = None        # 0..1 (medios)
+    eq_high: float | None = None       # 0..1 (agudos)
     jumped: bool = False               # salto de posición (loop, hot cue, arrastre)
     playing: bool | None = None        # la posición avanza
 

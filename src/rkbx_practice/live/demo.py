@@ -86,6 +86,8 @@ class DemoSource:
                 is_master=(n == cur),
                 fader=faders.get(n, 0.0) if playing else 0.0,
                 eq_low=eq.get(n, 0.75),
+                eq_mid=0.5,
+                eq_high=0.5,
             ))
         return ReadResult(tuple(decks), MixerState(crossfader=0.5), [], 1)
 

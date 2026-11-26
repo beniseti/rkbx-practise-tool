@@ -16,6 +16,7 @@ from ..config import SessionConfig
 from ..events import BassSwap, CutBurst, LiveEvent, TrackLoaded, TransitionEvent
 from ..library.memory_library import InMemoryLibrary
 from ..session.compatibility import transition
+from .mixer_log import MixerLog
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ class SessionRecorder:
         self._lock = threading.Lock()
         self._data: dict | None = None
         self.stem: str | None = None    # nombre base de los archivos de la sesión en curso
+        self.mixer: MixerLog | None = None  # faders y EQ en el tiempo (revisión de mezclas)
 
     def _reserve_stem(self, started: datetime) -> str:
         """`session-AAAAMMDD-HHMMSS[-n]` libre (para el .json, el audio y la forma de onda)."""
@@ -55,6 +57,7 @@ class SessionRecorder:
         now = datetime.now()
         with self._lock:
             self.stem = self._reserve_stem(now)
+            self.mixer = MixerLog(self.decks, now)
             self._data = {
                 "format_version": FORMAT_VERSION,
                 "started_at": _iso(now),
@@ -80,12 +83,39 @@ class SessionRecorder:
                 return None
             data, self._data = self._data, None
             stem, self.stem = self.stem, None
+            mixer, self.mixer = self.mixer, None
         data["ended_at"] = _iso(ended_at or datetime.now())
         if ended_at is not None:
             _cut_after(data, _iso(ended_at))
+            if mixer is not None:
+                mixer.cut_after((ended_at - mixer.started).total_seconds())
         if audio is not None:
             data["audio"] = audio
+        if stem is None:
+            stem = self._reserve_stem(datetime.fromisoformat(data["started_at"]))
+        data["mixer_file"] = self._save_mixer(mixer, stem)
         return self._save(data, stem)
+
+    def sample(self, snapshot) -> None:
+        """Guarda faders y EQ del momento (se llama con cada lectura en vivo)."""
+        with self._lock:
+            if self.mixer is not None:
+                try:
+                    self.mixer.add(snapshot)
+                except Exception:  # noqa: BLE001
+                    log.exception("No se pudo registrar el mezclador")
+
+    def _save_mixer(self, mixer: MixerLog | None, stem: str) -> str | None:
+        if mixer is None or not mixer.samples:
+            return None
+        self.dir.mkdir(parents=True, exist_ok=True)
+        path = self.dir / f"{stem}.mix.json"
+        try:
+            path.write_text(json.dumps(mixer.to_dict(), separators=(",", ":")), encoding="utf-8")
+        except OSError as exc:
+            log.warning("No se pudo guardar el registro del mezclador: %s", exc)
+            return None
+        return path.name
 
     def counts(self) -> dict[str, int]:
         with self._lock:
@@ -175,7 +205,8 @@ def _cut_after(data: dict, end_iso: str) -> None:
 
 
 def list_sessions(history_dir: str | Path) -> list[Path]:
-    return sorted(Path(history_dir).glob("session-*.json"), reverse=True)
+    # Solo los JSON de sesión (no `<sesión>.mix.json` del registro del mezclador).
+    return sorted((p for p in Path(history_dir).glob("session-*.json") if "." not in p.stem), reverse=True)
 
 
 def load_session(path: str | Path) -> dict:

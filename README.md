@@ -109,6 +109,11 @@ cargados, transiciones en azul, fader cuts ✓/✗, bass swaps); clic en cualqui
 para escuchar desde ahí; **Mezcla ⏭ / ⏮** salta a la siguiente/anterior transición (empieza 6 s
 antes). Teclas: espacio, ← →, N / P, + / − (zoom; también con la rueda).
 
+Bajo el zoom, los **faders y EQ (HI/MID/LOW) de cada deck** en el tiempo, y un panel con el % de
+cada uno en el punto que suena (0 % = cortado, 50 % = centro, 100 % = máximo). Cada transición
+indica si hubo **choque de graves** (los graves de los dos decks sonando a la vez) y con qué EQ
+entró el tema nuevo.
+
 ## Luces
 
 - **Efectos…** en la ventana: análisis de cada tema (frases y cambios de energía) en una línea de

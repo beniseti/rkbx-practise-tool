@@ -273,3 +273,51 @@ def test_session_cut_removes_events_after_end(tmp_path):
     data = json.loads(path.read_text(encoding="utf-8"))
     assert [t["id"] for t in data["tracks"]] == ["a"]
     assert data["ended_at"].startswith("2026-11-26T21:05:00")
+
+
+def _snap(sec, f1, low1, f2=0.0, low2=0.0, base=datetime(2026, 11, 26, 21, 0, 0)):
+    from datetime import timedelta
+    from rkbx_practice.state import DeckState, LiveSnapshot
+    return LiveSnapshot(t=sec, wall=base + timedelta(seconds=sec), decks=(
+        DeckState(deck=1, fader=f1, eq_low=low1, eq_mid=0.5, eq_high=0.5, playing=True),
+        DeckState(deck=2, fader=f2, eq_low=low2, eq_mid=0.5, eq_high=None, playing=False)))
+
+
+def test_mixer_log_keeps_changes_and_keepalive():
+    from rkbx_practice.history.mixer_log import MixerLog
+    log = MixerLog(2, datetime(2026, 11, 26, 21, 0, 0), min_interval_s=0.05, keepalive_s=2.0)
+    for i in range(100):                                  # 2 s sin cambios a 20 ms
+        log.add(_snap(i * 0.02, 1.0, 0.5))
+    assert len(log.samples) == 1                          # nada cambia: solo la primera
+    log.add(_snap(2.1, 1.0, 0.5))                         # keepalive
+    log.add(_snap(2.12, 0.6, 0.5))                        # cambio, pero < min_interval
+    log.add(_snap(2.2, 0.6, 0.2))
+    assert [s[0] for s in log.samples] == [0.0, 2.1, 2.2]
+    assert log.columns[:6] == ["t", "d1_fader", "d1_high", "d1_mid", "d1_low", "d1_playing"]
+    assert log.samples[-1][1:6] == [0.6, 0.5, 0.5, 0.2, 1]
+    assert log.samples[-1][7] is None and log.samples[-1][10] == 0   # sin dato / parado
+    log.cut_after(2.15)
+    assert [s[0] for s in log.samples] == [0.0, 2.1]
+
+
+def test_session_saves_mixer_file_and_lists_only_sessions(tmp_path):
+    r = SessionRecorder(tmp_path, None, SessionConfig())
+    stem = r.start(None)
+    r.mixer.started = datetime(2026, 11, 26, 21, 0, 0)
+    r.sample(_snap(0.0, 1.0, 0.5))
+    r.sample(_snap(1.0, 0.5, 0.0, 0.8, 0.5))
+    path = r.stop()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["mixer_file"] == f"{stem}.mix.json"
+    mix = json.loads((tmp_path / data["mixer_file"]).read_text(encoding="utf-8"))
+    assert len(mix["samples"]) == 2 and mix["decks"] == 2
+    from rkbx_practice.history import list_sessions
+    assert list_sessions(tmp_path) == [path]              # el .mix.json no cuenta como sesión
+    assert [s["id"] for s in session_list(tmp_path)] == [stem]
+    srv = ReviewServer(tmp_path, port=0)
+    srv.start()
+    try:
+        code, _, body = _get(srv.url + f"mixer/{stem}")
+        assert code == 200 and json.loads(body)["columns"][1] == "d1_fader"
+    finally:
+        srv.stop()
