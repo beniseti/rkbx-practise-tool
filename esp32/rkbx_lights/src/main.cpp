@@ -4,11 +4,13 @@
 //   · Recepción: AsyncUDP (por eventos, en la tarea de red) → análisis con ArduinoJson → cola.
 //   · Dibujo: en loop() (otro núcleo) se vacía la cola, se calcula cada LED (lights_core) y
 //     FastLED lo envía por RMT a las 3 tiras.
+//   · Red: Wi-Fi de casa si está configurada y conecta; si no, Wi-Fi propia (config.h).
 //   · Wi-Fi sin ahorro de energía (el ahorro añade decenas de ms de latencia).
 // También acepta los mismos JSON por el puerto serie (una línea por comando) para probar sin Wi-Fi.
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <AsyncUDP.h>
+#include <ESPmDNS.h>
 #include <FastLED.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
@@ -90,24 +92,53 @@ static void enqueue(const char* data, size_t len) {
 // ---------------------------------------------------------------------------
 // Red
 // ---------------------------------------------------------------------------
-static void startNetwork() {
-#if USE_STATION
+static bool stationMode = false;
+
+static bool connectStation() {
+  if (sizeof(WIFI_STA_SSID) <= 1) {
+    Serial.println("Sin Wi-Fi de casa configurada (include/secrets.h)");
+    return false;
+  }
   WiFi.mode(WIFI_STA);
+  WiFi.setHostname(HOSTNAME);
+#ifdef WIFI_STA_STATIC_IP
+  WiFi.config(IPAddress(WIFI_STA_STATIC_IP), IPAddress(WIFI_STA_GATEWAY), IPAddress(WIFI_STA_SUBNET),
+              IPAddress(WIFI_STA_GATEWAY));
+#endif
   WiFi.begin(WIFI_STA_SSID, WIFI_STA_PASSWORD);
-  Serial.printf("Conectando a %s", WIFI_STA_SSID);
-  for (int i = 0; i < 60 && WiFi.status() != WL_CONNECTED; ++i) {
+  Serial.printf("Conectando a la Wi-Fi %s", WIFI_STA_SSID);
+  uint32_t start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_STA_TIMEOUT_MS) {
     delay(250);
     Serial.print('.');
   }
-  Serial.printf("\nIP: %s\n", WiFi.localIP().toString().c_str());
-#else
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\nNo conecta: se crea la Wi-Fi propia");
+    WiFi.disconnect(true);
+    delay(100);
+    return false;
+  }
+  WiFi.setAutoReconnect(true);                // si se cae el router, vuelve sola
+  Serial.printf("\nConectado a %s · IP %s\n", WIFI_STA_SSID, WiFi.localIP().toString().c_str());
+  return true;
+}
+
+static void startAccessPoint() {
   WiFi.mode(WIFI_AP);
   IPAddress ip(WIFI_AP_IP);
   WiFi.softAPConfig(ip, ip, IPAddress(255, 255, 255, 0));
   WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD, WIFI_AP_CHANNEL, 0, 4);
   Serial.printf("Wi-Fi propia: %s (clave %s) · IP %s\n", WIFI_AP_SSID, WIFI_AP_PASSWORD,
                 WiFi.softAPIP().toString().c_str());
-#endif
+}
+
+static void startNetwork() {
+  stationMode = connectStation();
+  if (!stationMode) startAccessPoint();
+  if (MDNS.begin(HOSTNAME)) {
+    MDNS.addService("rkbx-luces", "udp", UDP_PORT);
+    Serial.printf("mDNS: %s.local\n", HOSTNAME);
+  }
   WiFi.setSleep(false);
   esp_wifi_set_ps(WIFI_PS_NONE);              // sin ahorro de energía: menos latencia
 

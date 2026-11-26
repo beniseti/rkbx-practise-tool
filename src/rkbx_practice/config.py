@@ -93,7 +93,8 @@ class UiConfig:
 @dataclass
 class LightsConfig:
     enabled: bool = False
-    esp32_ip: str = "192.168.4.1"
+    # Direcciones/nombres del ESP32: Wi-Fi de casa (mDNS) y, si no, su Wi-Fi propia.
+    esp32_ip: str | list = field(default_factory=lambda: ["rkbx-luces.local", "192.168.4.1"])
     esp32_port: int = 4210
     latency_compensation_ms: int = 0
     events_dir: str = "data/lights"

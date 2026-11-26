@@ -26,18 +26,33 @@
 // Fotogramas por segundo del dibujo (los LEDs WS2812B admiten de sobra 200 fps con 60 LEDs/tira).
 #define FRAMES_PER_SECOND 200
 
-// ---- Red: el ESP32 crea su propia Wi-Fi (el PC se conecta a ella) ----
+// ---- Red ----
+// 1) Al arrancar intenta unirse a la Wi-Fi de casa (WIFI_STA_SSID / WIFI_STA_PASSWORD, en
+//    include/secrets.h, que NO se sube a GitHub; copia secrets.example.h como secrets.h).
+// 2) Si no hay Wi-Fi configurada o no conecta en WIFI_STA_TIMEOUT_MS, crea su propia Wi-Fi.
+// En los dos casos se anuncia por mDNS como «rkbx-luces.local» (la app lo busca solo).
+#if __has_include("secrets.h")
+#include "secrets.h"
+#endif
+#ifndef WIFI_STA_SSID
+#define WIFI_STA_SSID ""                   // vacío = no intentar Wi-Fi de casa
+#define WIFI_STA_PASSWORD ""
+#endif
+#define WIFI_STA_TIMEOUT_MS 15000
+// IP fija en la Wi-Fi de casa (opcional; recomendable para que la app la encuentre siempre).
+// Déjalo comentado para usar DHCP. Formato: 192, 168, 1, 200
+// #define WIFI_STA_STATIC_IP 192, 168, 1, 200
+// #define WIFI_STA_GATEWAY 192, 168, 1, 1
+// #define WIFI_STA_SUBNET 255, 255, 255, 0
+
+#define HOSTNAME "rkbx-luces"              // mDNS: rkbx-luces.local
+
+// Wi-Fi propia (si no hay Wi-Fi de casa): el PC se conecta a ella.
 #define WIFI_AP_SSID "RKBX-LUCES"
 #define WIFI_AP_PASSWORD "rekordbox"       // mínimo 8 caracteres
 #define WIFI_AP_CHANNEL 6
-#define WIFI_AP_IP 192, 168, 4, 1          // la app envía a lights.esp32_ip = 192.168.4.1
+#define WIFI_AP_IP 192, 168, 4, 1
 #define UDP_PORT 4210                      // lights.esp32_port
-
-// Alternativa: unirse a una Wi-Fi existente (pon USE_STATION a 1 y la IP que mostrará el monitor serie
-// en lights.esp32_ip de config/config.json).
-#define USE_STATION 0
-#define WIFI_STA_SSID "mi-wifi"
-#define WIFI_STA_PASSWORD "mi-clave"
 
 // LED de la placa (parpadea al recibir comandos).
 #define STATUS_LED_PIN 2

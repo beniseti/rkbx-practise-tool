@@ -1,7 +1,8 @@
 # Protocolo de luces (PC → ESP32)
 
 Un datagrama **UDP** por comando, con un objeto **JSON** en UTF-8. Sin respuesta.
-Por defecto al `192.168.4.1:4210` (el ESP32 crea su propia Wi-Fi). El simulador
+Por defecto al puerto 4210 de `rkbx-luces.local` (ESP32 en la Wi-Fi de casa, mDNS) y de
+`192.168.4.1` (su propia Wi-Fi, si no hay Wi-Fi de casa). El simulador
 (`python -m rkbx_practice lights simulate`) entiende exactamente lo mismo.
 
 ```json

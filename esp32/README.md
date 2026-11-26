@@ -43,17 +43,23 @@ lleve) y, si hace falta, mantén pulsado **BOOT** al empezar la subida.
 
 Con **Arduino IDE**: placa «ESP32 Dev Module», instala *FastLED* y *ArduinoJson* desde el
 gestor de librerías, crea un sketch `rkbx_lights` y copia dentro `src/main.cpp` (renombrado a
-`rkbx_lights.ino`), `src/lights_core.cpp`, `include/lights_core.h` e `include/config.h`.
+`rkbx_lights.ino`), `src/lights_core.cpp`, `include/lights_core.h`, `include/config.h` y, si la usas,
+`include/secrets.h`.
 
 ## Uso
 
 1. Al arrancar hace un barrido (tira 1 roja, 2 verde, 3 azul) para comprobar el cableado y queda
    en reposo con destellos suaves.
-2. Conecta el PC a la Wi-Fi **RKBX-LUCES** (clave `rekordbox`). El ESP32 queda en `192.168.4.1`,
-   puerto `4210`: lo que ya espera la app (`lights.esp32_ip` / `lights.esp32_port`).
-   - Si el PC necesita su Wi-Fi para internet, usa cable para internet o pon `USE_STATION 1` en
-     `config.h` para que el ESP32 se una a tu red (y copia la IP que muestra el monitor serie en
-     `lights.esp32_ip`).
+2. Red (en este orden):
+   - **Wi-Fi de casa**: copia `include/secrets.example.h` como `include/secrets.h` y pon tu
+     red y clave (ese archivo no se sube a GitHub). Al arrancar intenta conectarse durante 15 s;
+     el monitor serie muestra `Conectado a … · IP …`. El PC debe estar en la misma red.
+   - **Wi-Fi propia**: si no hay `secrets.h` o no conecta, crea **RKBX-LUCES** (clave
+     `rekordbox`) en `192.168.4.1`. Conecta el PC a ella.
+   - En los dos casos se anuncia como **`rkbx-luces.local`** (mDNS). La app envía por defecto a
+     `["rkbx-luces.local", "192.168.4.1"]` (`lights.esp32_ip`), así que lo encuentra sola. Si
+     Windows no resuelve `rkbx-luces.local`, fija la IP en `config.h` (`WIFI_STA_STATIC_IP`) o
+     pon la IP del monitor serie en `lights.esp32_ip`.
 3. Prueba desde el PC:
    ```powershell
    python -m rkbx_practice lights send flash color=rojo dur_ms=500

@@ -375,9 +375,9 @@ def cmd_lights_send(cfg, args) -> int:
     cmd = LightCommand(args.fx, parse_params(" ".join(args.params)))
     host, port = (("127.0.0.1", cfg.lights.simulator_port) if args.simulator
                   else (cfg.lights.esp32_ip, cfg.lights.esp32_port))
-    tx = UdpSender(host, port)
+    tx = UdpSender(host, port, background=False)   # resuelve nombres (rkbx-luces.local) antes
     ok = tx.send(cmd)
-    _out(f"{'Enviado' if ok else 'NO enviado'} a {host}:{port}: {cmd.to_json().decode()}")
+    _out(f"{'Enviado' if ok else 'NO enviado'} a {tx.describe()}: {cmd.to_json().decode()}")
     return 0 if ok else 1
 
 

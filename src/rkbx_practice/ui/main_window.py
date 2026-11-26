@@ -227,7 +227,9 @@ class MainWindow(QMainWindow):
         self.history_button = QPushButton("Histórico")
         self.history_button.clicked.connect(self._show_history)
         self.lights_check = QCheckBox("Luces")
-        self.lights_check.setToolTip(f"Enviar efectos al ESP32 ({cfg.lights.esp32_ip}:{cfg.lights.esp32_port})")
+        esp = cfg.lights.esp32_ip
+        esp = ", ".join(esp) if isinstance(esp, list) else esp
+        self.lights_check.setToolTip(f"Enviar efectos al ESP32 ({esp}, puerto {cfg.lights.esp32_port})")
         self.lights_check.setChecked(cfg.lights.enabled)
         self.lights_check.toggled.connect(self.ctl.set_lights_enabled)
         self.lights_button = QPushButton("Efectos…")
@@ -518,9 +520,8 @@ class MainWindow(QMainWindow):
                 d_ = snap_.deck(lead)
                 if d_ is not None and d_.track_id in lights.problems:
                     status = f"Deck {lead}: sin luces: {lights.problems[d_.track_id]}"
-            targets = getattr(lights.sender, "targets", [])
-            status += (f" · enviados {lights.sender.sent} a "
-                       + ", ".join(f"{h}:{p}" for h, p in targets))
+            describe = getattr(lights.sender, "describe", None)
+            status += f" · enviados {lights.sender.sent} a " + (describe() if describe else "")
             if lights.sender.errors:
                 status += f" · {lights.sender.errors} errores de envío"
             self.lights_check.setToolTip(status)

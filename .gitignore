@@ -15,3 +15,6 @@ data/offsets/*.candidates.json
 # PlatformIO
 esp32/rkbx_lights/.pio/
 esp32/rkbx_lights/.vscode/
+
+# Wi-Fi de casa del ESP32 (no subir la clave)
+esp32/rkbx_lights/include/secrets.h

@@ -586,3 +586,29 @@ def test_minidrops_blackout_then_new_effect():
     assert ev[63].fx == "off" and ev[125].fx == "off"                     # apagón en el hueco
     assert ev[65].fx == "chase" and ev[129].fx == "alternate"            # efecto distinto cada vez
     assert "Minidrop" in ev[65].label
+
+
+def test_udp_sender_resolves_names_and_dedupes():
+    calls = []
+
+    def fake(host, port):
+        calls.append(host)
+        return {"rkbx-luces.local": "127.0.0.1"}.get(host)
+
+    tx = UdpSender(["rkbx-luces.local", "127.0.0.1", "nope.local"], 4210, resolver=fake, background=False)
+    assert set(calls) == {"rkbx-luces.local", "nope.local"}
+    assert tx.targets == [("127.0.0.1", 4210)]          # misma IP: una sola vez
+    assert "rkbx-luces.local=127.0.0.1:4210" in tx.describe()
+    assert "nope.local (buscando…)" in tx.describe()
+    tx.add_target("127.0.0.1", 4211)
+    assert tx.targets == [("127.0.0.1", 4210), ("127.0.0.1", 4211)]
+    tx.remove_target("127.0.0.1", 4211)
+    assert tx.targets == [("127.0.0.1", 4210)]
+    tx.close()
+
+
+def test_udp_sender_unresolved_name_sends_nothing():
+    tx = UdpSender("rkbx-luces.local", 4210, resolver=lambda h, p: None, background=False)
+    assert tx.targets == []
+    assert tx.send(LightCommand("flash", {})) is False
+    tx.close()
