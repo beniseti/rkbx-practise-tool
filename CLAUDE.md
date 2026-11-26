@@ -29,6 +29,7 @@ Rekordbox no tiene API de plugins. La app es un programa independiente con una v
 | Persistencia del tachado | No se mantiene entre sesiones; cada práctica empieza de cero |
 | Histórico | Sí: se guarda cada sesión grabada |
 | Inicio/fin de grabación | Botón en nuestra app (no el REC de Rekordbox) |
+| Audio de la sesión | Se graba junto con la sesión (decisión del usuario): lo que suena por la controladora (loopback WASAPI), FLAC en `history/`. Revisión en el **navegador** |
 | Tonalidad | La detectada por Rekordbox |
 | Análisis para luces | El de Rekordbox (rejilla de beats, frases, forma de onda por bandas en ANLZ). Sin análisis espectral propio |
 | Crossfader | Desactivado por defecto; activable en JSON |
@@ -162,6 +163,7 @@ Claves añadidas durante la implementación:
 - `detection.bass_swap_bar_tolerance_beats`: tolerancia (en beats) para considerar que un bass swap cae en inicio de compás/frase.
 - `detection.default_bpm`: BPM supuesto si un deck no informa BPM (para convertir beats a segundos).
 - `ui.always_on_top`, `ui.start_compact`, `ui.theme` (`rekordbox` o `system`).
+- `audio.*`: `enabled`, `device` (parte del nombre; `null` = salida predeterminada), `loopback` (salida o entrada), `sample_rate`, `channels`, `format` (`flac`/`wav`/`ogg`), `block_ms`, `peaks_per_s`, `review_http_port` (8766).
 
 Los valores de umbral son puntos de partida; se ajustarán probando con el usuario.
 
@@ -284,6 +286,15 @@ La grabación empieza y termina con el botón de la app. Cada sesión se guarda 
 - Temas en orden de carga, con hora y deck.
 - Lista de transiciones, fader cuts y bass swaps (abajo).
 
+### Audio de la sesión (pedido del usuario: «grabar en audio y consultar interactivamente para escuchar las mezclas»)
+
+- Controladora del usuario: **DDJ-FLX4** (o DDJ-400). Captura elegida por el usuario: **lo que sale por la controladora**, sin cables (loopback WASAPI de esa salida). Si Rekordbox usa el driver ASIO, Windows no ve ese audio: `audio test` lo detecta («Silencio») y el README explica las alternativas (driver WASAPI o cable a la entrada de línea con `loopback: false`). **Sin comprobar en real.**
+- Dependencias nuevas (extra `audio`, indicadas al usuario): `soundcard` (WASAPI con loopback), `soundfile` (FLAC/WAV/OGG con libsndfile) y `numpy`. Sin ellas la sesión se guarda sin audio y se indica el motivo (`audio.error` en el JSON, aviso en la ventana).
+- `audio/recorder.py`: hilo propio, bloques de `block_ms` escritos directamente al archivo (una sesión larga no ocupa memoria); `started_at` = hora real del primer bloque, para alinear con los eventos; si la captura va > 0,5 s por detrás del reloj (el loopback no entrega datos en silencio) se rellena con silencio (`padded_s`); forma de onda resumida en `<sesión>.peaks` (1 byte por pico, `peaks_per_s`). COM se inicia en el hilo de captura. Nunca para la app.
+- Archivos de una sesión con el mismo nombre base (`SessionRecorder.start` lo reserva): `session-AAAAMMDD-HHMMSS.json`, `.flac`, `.peaks`. En el JSON, bloque `audio` (archivo, `started_at`, duración, dispositivo, `padded_s`, `error`).
+- **Revisión en el navegador** (decisión del usuario; `review/server.py` + `review.html`, solo biblioteca estándar, 127.0.0.1:`review_http_port`): lista de sesiones, forma de onda de toda la sesión + zoom (rueda / + −) con temas cargados, transiciones (bandas azules), fader cuts (✓ verde / ✗ rojo por corte), bass swaps (triángulo morado), cursor naranja; lista de eventos con clic para escuchar desde ahí (con unos segundos antes); **Mezcla ⏭/⏮** salta entre transiciones; «Sonando: …» según la última transición. El audio se sirve con peticiones por rangos (saltar a cualquier punto); solo se sirven archivos del histórico referenciados por su JSON. Se abre con `history review` o el botón **🎧 Escuchar en el navegador** del Histórico.
+- CLI: `audio devices`, `audio test [--seconds]`, `history review [sesión] [--port] [--no-browser]`.
+
 ### Volumen efectivo de cada deck
 
 `volumen = fader_canal` (si el crossfader está activado: `fader_canal × factor_crossfader` según el lado del deck).
@@ -401,4 +412,5 @@ Comprobar la licencia de cada repositorio antes de reutilizar código. (Hasta ah
 - Tests: `pytest` (funcionan sin Rekordbox, sin Qt y en cualquier sistema). Incluyen una prueba de punta a punta con la fuente `--demo` y otra del asistente de offsets contra un "Rekordbox" simulado en memoria.
 - Comandos: ver `README.md` (`library`, `session`, `live`, `ui`, `history`, `offsets`, y `python -m tools.offset_detect`).
 - Validado en Windows real con Rekordbox 7.2.3: biblioteca, ventana PySide6, tachado y sugerencias en vivo; offsets de BPM, posición, ruta ANLZ, fader (controladora) y EQ de graves para los decks 1 y 2.
-- **Siguiente paso:** grabar una sesión real (transición normal, corte seco, fader cuts y bass swap), comparar el resumen de `history show` con lo que hizo el usuario y ajustar umbrales de `detection`.
+- Audio de la sesión y página de revisión implementados (probados con dobles de prueba y en navegador sin audio real de la controladora). Falta: `audio test` con la DDJ-FLX4 en Windows.
+- **Siguiente paso:** grabar una sesión real (con audio) (transición normal, corte seco, fader cuts y bass swap), comparar el resumen de `history show` con lo que hizo el usuario y ajustar umbrales de `detection`.

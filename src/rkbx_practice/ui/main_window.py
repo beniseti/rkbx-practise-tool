@@ -150,8 +150,9 @@ class DeckWidget(QFrame):
 class HistoryDialog(QDialog):
     """Sesiones grabadas: lista a la izquierda, resumen a la derecha."""
 
-    def __init__(self, cfg: AppConfig, parent=None):
+    def __init__(self, cfg: AppConfig, parent=None, open_review=None):
         super().__init__(parent)
+        self._open_review = open_review
         from ..history import list_sessions, load_session, summarize
         self._load, self._summarize = load_session, summarize
         self.setWindowTitle("Histórico de sesiones")
@@ -168,6 +169,11 @@ class HistoryDialog(QDialog):
         split.addWidget(self.text)
         split.setSizes([260, 560])
         lay.addWidget(split)
+        listen = QPushButton("🎧 Escuchar en el navegador")
+        listen.setToolTip("Abre la página de revisión: forma de onda de la sesión con transiciones, "
+                          "fader cuts y bass swaps; clic para escuchar desde ese punto")
+        listen.clicked.connect(self._listen)
+        lay.addWidget(listen)
         for path in list_sessions(cfg.resolve_path(cfg.history.dir)):
             try:
                 data = load_session(path)
@@ -184,6 +190,21 @@ class HistoryDialog(QDialog):
         else:
             self.text.setPlainText("Todavía no hay sesiones grabadas.\n\n"
                                    "Pulsa «Iniciar grabación» en la ventana principal para grabar una.")
+
+    def _listen(self) -> None:
+        import webbrowser
+        if self._open_review is None:
+            return
+        try:
+            url = self._open_review()
+        except OSError as exc:
+            QMessageBox.warning(self, "Revisión", f"No se pudo abrir la página de revisión: {exc}")
+            return
+        item = self.list.currentItem()
+        if item is not None:
+            from pathlib import Path as _P
+            url += f"?s={_P(item.data(Qt.UserRole)).stem}"
+        webbrowser.open(url)
 
     def _select(self, item, _prev=None) -> None:
         if item is None:
@@ -535,16 +556,33 @@ class MainWindow(QMainWindow):
             c = self.ctl.recorder.counts()
             secs = int(time.monotonic() - self._record_started)
             self.rec_button.setText(f"■ Parar grabación {secs // 60:02d}:{secs % 60:02d}")
+            audio = self.ctl.audio
+            if audio is None:
+                a_txt = "audio desactivado (audio.enabled)"
+            elif audio.error:
+                a_txt = f"SIN AUDIO: {audio.error}"
+            elif audio.level_db is None:
+                a_txt = "audio: esperando sonido…"
+            else:
+                a_txt = f"audio {audio.level_db:.0f} dB" + (" (silencio)" if audio.level_db < -60 else "")
             self.rec_button.setToolTip(f"Temas {c.get('tracks', 0)} · transiciones "
                                        f"{c.get('transitions', 0)} · cuts {c.get('fader_cuts', 0)} · "
-                                       f"bass swaps {c.get('bass_swaps', 0)}")
+                                       f"bass swaps {c.get('bass_swaps', 0)} · {a_txt}")
+            if audio is not None and audio.error:
+                self.rec_button.setText(f"■ Parar grabación {secs // 60:02d}:{secs % 60:02d} (sin audio)")
 
     # --- grabación y compactar ---------------------------------------
     def _toggle_recording(self, checked: bool) -> None:
         if checked:
             self.ctl.start_recording()
             self._record_started = time.monotonic()
-            self.statusBar().showMessage("Grabando sesión…", 3000)
+            audio = self.ctl.audio
+            if audio is not None and audio.error:
+                self.statusBar().showMessage(f"Grabando sesión SIN AUDIO: {audio.error}", 15000)
+            elif audio is not None:
+                self.statusBar().showMessage(f"Grabando sesión y audio ({audio.device_name})…", 5000)
+            else:
+                self.statusBar().showMessage("Grabando sesión…", 3000)
         else:
             path = self.ctl.stop_recording()
             self._record_started = None
@@ -606,7 +644,7 @@ class MainWindow(QMainWindow):
         LightsEditor(self.ctl, tracks, self, position_provider=positions).exec()
 
     def _show_history(self) -> None:
-        HistoryDialog(self.cfg, self).exec()
+        HistoryDialog(self.cfg, self, open_review=self.ctl.open_review).exec()
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt)
         if self.ctl.recorder.recording:

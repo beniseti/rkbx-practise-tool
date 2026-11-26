@@ -84,6 +84,21 @@ class HistoryConfig:
 
 
 @dataclass
+class AudioConfig:
+    """Grabación del audio de la sesión (pedido del usuario) junto al histórico."""
+    enabled: bool = True
+    # Parte del nombre del dispositivo (p. ej. "DDJ-FLX4"); null = salida predeterminada de Windows.
+    device: str | None = None
+    loopback: bool = True        # True: lo que suena por una SALIDA; False: una ENTRADA (línea/micro)
+    sample_rate: int = 44100
+    channels: int = 2
+    format: str = "flac"         # flac (sin pérdida, ~1/2 de wav), wav u ogg
+    block_ms: int = 100
+    peaks_per_s: int = 20        # resolución de la forma de onda que se guarda para revisar
+    review_http_port: int = 8766  # página de revisión http://127.0.0.1:8766/
+
+
+@dataclass
 class UiConfig:
     always_on_top: bool = True
     start_compact: bool = False
@@ -142,6 +157,7 @@ class AppConfig:
     mixer: MixerConfig = field(default_factory=MixerConfig)
     detection: DetectionConfig = field(default_factory=DetectionConfig)
     history: HistoryConfig = field(default_factory=HistoryConfig)
+    audio: AudioConfig = field(default_factory=AudioConfig)
     ui: UiConfig = field(default_factory=UiConfig)
     lights: LightsConfig = field(default_factory=LightsConfig)
     base_dir: Path = PROJECT_ROOT

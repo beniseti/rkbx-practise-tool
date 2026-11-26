@@ -13,12 +13,14 @@ Diseño y decisiones: ver [CLAUDE.md](CLAUDE.md).
 cd rkbx-practise-tool
 python -m venv .venv
 .venv\Scripts\activate
-pip install -e .[tools,dev]
+pip install -e .[tools,dev,audio]
 ```
 
 Dependencias: `pyrekordbox` (master.db y ANLZ), `pymem` (lectura de memoria,
 solo Windows), `PySide6` (ventana). `numpy` solo para la herramienta de
-offsets (ya lo instala pyrekordbox). `pytest` para los tests.
+offsets (ya lo instala pyrekordbox). `pytest` para los tests. Extra `audio`:
+`soundcard` (captura del sonido de Windows, WASAPI) y `soundfile` (guarda FLAC) para
+grabar el audio de las sesiones; sin ellas las sesiones se guardan sin audio.
 
 ## Uso diario (Rekordbox 7.2.3 con controladora)
 
@@ -35,8 +37,9 @@ python -m rkbx_practice ui
 3. Carga los temas en los decks: se ponen en **verde** (tachados), la siguiente
    sugerencia en **amarillo** (naranja si es comodín) y las sugerencias que te
    saltas en **rojo**. Clic en un tema verde para destacharlo.
-4. **● Iniciar grabación** / **■ Parar grabación** para guardar la sesión y
-   **Histórico** para revisarla (transiciones, fader cuts a tiempo, bass swaps).
+4. **● Iniciar grabación** / **■ Parar grabación** para guardar la sesión **y su audio**,
+   y **Histórico** para revisarla (transiciones, fader cuts a tiempo, bass swaps).
+   **🎧 Escuchar en el navegador** abre la página de revisión.
 
 ## Comandos
 
@@ -60,6 +63,11 @@ python -m rkbx_practice ui
 # Histórico
 python -m rkbx_practice history list
 python -m rkbx_practice history show session-20261125-220000.json
+python -m rkbx_practice history review            # escuchar en el navegador
+
+# Audio de la sesión
+python -m rkbx_practice audio devices             # salidas y entradas de audio
+python -m rkbx_practice audio test                # graba 5 s y dice si llega sonido
 ```
 
 Sin Rekordbox:
@@ -72,6 +80,31 @@ python -m rkbx_practice --library-json data/demo_library.json --demo live --sess
 
 `--demo` simula dos decks que pinchan las sugerencias (cargas, transiciones de
 8 s con bass swap) para ver la ventana y las detecciones funcionando.
+
+## Audio de las sesiones
+
+Al grabar una sesión, la app graba también **lo que suena por la controladora** (loopback
+WASAPI: lo que Windows envía a esa salida) en `history/<sesión>.flac`, con la hora de inicio para
+alinearlo con las transiciones, fader cuts y bass swaps. Configuración en `audio` de
+`config/config.json`:
+
+- `device`: parte del nombre del dispositivo (p. ej. `"DDJ-FLX4"`); `null` = salida
+  predeterminada de Windows. Lista con `audio devices`.
+- `loopback`: `true` graba una salida (lo que suena); `false` graba una entrada (línea/micro).
+- `format`: `flac` (por defecto, ~300 MB por hora), `wav` u `ogg` (mucho más pequeño, con pérdida).
+- `enabled: false` desactiva la grabación de audio.
+
+**Comprueba antes de la primera sesión** con `audio test` mientras suena algo. Si sale
+«Silencio», Rekordbox está usando el driver **ASIO** de la controladora, que Windows no ve.
+Opciones: en Rekordbox → Preferencias → Audio, elegir el driver WASAPI/Windows de la
+controladora si lo ofrece; o un cable de la salida de la controladora a la entrada de línea del
+PC (`loopback: false`, `device: "Línea"`).
+
+**Revisión** (`history review` o **Histórico → 🎧 Escuchar en el navegador**,
+`http://127.0.0.1:8766/`): forma de onda de toda la sesión y un zoom con las marcas (temas
+cargados, transiciones en azul, fader cuts ✓/✗, bass swaps); clic en cualquier punto o en la lista
+para escuchar desde ahí; **Mezcla ⏭ / ⏮** salta a la siguiente/anterior transición (empieza 6 s
+antes). Teclas: espacio, ← →, N / P, + / − (zoom; también con la rueda).
 
 ## Luces
 

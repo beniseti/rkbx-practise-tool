@@ -8,6 +8,8 @@ Ejemplos:
     python -m rkbx_practice live --session "Techno/Warmup"
     python -m rkbx_practice ui
     python -m rkbx_practice history list
+    python -m rkbx_practice history review
+    python -m rkbx_practice audio devices | audio test
     python -m rkbx_practice offsets
 
 `--demo` simula dos decks pinchando las sugerencias (sin Rekordbox).
@@ -257,6 +259,69 @@ def cmd_history_show(cfg, args) -> int:
     return 0
 
 
+def cmd_history_review(cfg, args) -> int:
+    """Página del navegador para escuchar las sesiones grabadas con sus marcas."""
+    import time
+    import webbrowser
+    from .review import ReviewServer
+    srv = ReviewServer(cfg.resolve_path(cfg.history.dir), port=args.port or cfg.audio.review_http_port)
+    srv.start()
+    url = srv.url + (f"?s={Path(args.session).stem}" if args.session else "")
+    if srv.external:
+        _out(f"Ya hay una página de revisión abierta en {srv.url}")
+    else:
+        _out(f"Revisión de sesiones en {url}  (Ctrl+C para cerrar)")
+    if not args.no_browser:
+        webbrowser.open(url)
+    if srv.external:
+        return 0
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        srv.stop()
+    return 0
+
+
+def cmd_audio_devices(cfg, args) -> int:
+    from .audio import AudioUnavailable, list_devices
+    try:
+        devices = list_devices()
+    except AudioUnavailable as exc:
+        _out(f"No se puede usar el audio: {exc}")
+        return 1
+    a = cfg.audio
+    _out(f"Configurado: {'lo que suena por' if a.loopback else 'entrada'} "
+         f"«{a.device or 'predeterminado'}» (audio.device / audio.loopback en config.json)")
+    for kind, title in (("salida", "Salidas (se graba lo que suena, audio.loopback = true)"),
+                        ("entrada", "Entradas (línea/micro, audio.loopback = false)")):
+        _out(title + ":")
+        for d in devices:
+            if d["kind"] == kind:
+                _out(f"  {'*' if d['default'] else ' '} {d['name']}")
+    _out("(* = predeterminado de Windows)")
+    return 0
+
+
+def cmd_audio_test(cfg, args) -> int:
+    from .audio import AudioUnavailable, measure
+    _out(f"Grabando {args.seconds:g} s de prueba (no se guarda nada). Pon música en Rekordbox…")
+    try:
+        r = measure(cfg.audio, args.seconds)
+    except AudioUnavailable as exc:
+        _out(f"No se puede grabar: {exc}")
+        return 1
+    _out(f"Dispositivo: {r['device']}")
+    _out(f"Pico: {r['peak_db'] if r['peak_db'] is not None else '-inf'} dBFS · "
+         f"RMS: {r['rms_db'] if r['rms_db'] is not None else '-inf'} dBFS")
+    if r["silent"]:
+        _out("⚠ Silencio: no llega audio. ¿Sonaba algo? Si Rekordbox usa el driver ASIO de la "
+             "controladora, Windows no ve ese audio: mira las opciones en el README (Audio).")
+        return 2
+    _out("✓ Llega audio: las sesiones se grabarán con sonido.")
+    return 0
+
+
 def cmd_offsets(cfg, args) -> int:
     from .memory.offsets import load_offsets_dir
     from .memory.process import ProcessNotFound, attach
@@ -500,6 +565,17 @@ def build_parser() -> argparse.ArgumentParser:
     sp = h.add_parser("show")
     sp.add_argument("file")
     sp.set_defaults(func=cmd_history_show)
+    sp = h.add_parser("review", help="Escuchar las sesiones grabadas en el navegador")
+    sp.add_argument("session", nargs="?", help="Sesión a abrir (nombre del archivo)")
+    sp.add_argument("--port", type=int, help="Puerto (por defecto audio.review_http_port)")
+    sp.add_argument("--no-browser", action="store_true")
+    sp.set_defaults(func=cmd_history_review)
+
+    au = sub.add_parser("audio", help="Grabación del audio de la sesión").add_subparsers(dest="sub", required=True)
+    au.add_parser("devices", help="Dispositivos de audio disponibles").set_defaults(func=cmd_audio_devices)
+    sp = au.add_parser("test", help="Graba unos segundos y dice si llega sonido")
+    sp.add_argument("--seconds", type=float, default=5.0)
+    sp.set_defaults(func=cmd_audio_test)
 
     sub.add_parser("offsets", help="Versión de Rekordbox y offsets disponibles").set_defaults(func=cmd_offsets)
 

@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revisión de sesiones</title>
+<style>
+  :root {
+    --bg: #111317; --panel: #1b1e24; --panel2: #22262e; --line: #2f343d;
+    --text: #e6e8eb; --muted: #8c94a1; --accent: #ff8a1f; --blue: #3d8bfd;
+    --wave: #5b7fa6; --wave-played: #9cc3f5; --trans: rgba(61,139,253,.22);
+    --cut-ok: #40c057; --cut-bad: #fa5252; --cut-unk: #adb5bd; --swap: #c77dff; --load: #ced4da;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.4 "Segoe UI", system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px;
+           background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 17px; margin: 0 8px 0 0; }
+  select { max-width: 100%; }
+  select, button { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+                   border-radius: 6px; padding: 6px 10px; font: inherit; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 600;
+                   min-width: 92px; }
+  #info { color: var(--muted); }
+  main { padding: 12px 16px; display: grid; gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+  canvas { width: 100%; display: block; border-radius: 4px; background: #0c0e11; cursor: pointer; }
+  #overview { height: 84px; }
+  #detail { height: 190px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+  #time { font-variant-numeric: tabular-nums; font-size: 18px; margin: 0 8px; }
+  #now { color: var(--muted); flex: 1 1 260px; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+         white-space: nowrap; }
+  #now b { color: var(--text); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .legend label { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
+  .sw { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--panel2); }
+  tbody tr.current { background: rgba(255,138,31,.14); }
+  td.t { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+  .tag { font-size: 11px; padding: 1px 6px; border-radius: 10px; white-space: nowrap; }
+  .ok { color: var(--cut-ok); } .bad { color: var(--cut-bad); }
+  #empty, #noaudio { color: var(--muted); padding: 24px; text-align: center; }
+  .hint { color: var(--muted); font-size: 12px; }
+  @media (max-width: 640px) { header, main { padding: 10px 16px; } #detail { height: 150px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sesiones grabadas</h1>
+  <select id="sessions" aria-label="Sesión"></select>
+  <span id="info"></span>
+</header>
+<main>
+  <div id="empty" class="card" hidden>Todavía no hay sesiones grabadas. Pulsa «Iniciar grabación» en la app.</div>
+  <section class="card" id="player" hidden>
+    <canvas id="overview" title="Toda la sesión: clic para ir a ese punto"></canvas>
+    <div style="height:8px"></div>
+    <canvas id="detail" title="Zoom: clic para ir · rueda para acercar/alejar"></canvas>
+    <div id="noaudio" hidden>Esta sesión no tiene audio grabado: solo se pueden ver las marcas.</div>
+    <div class="controls">
+      <button id="prevMix" title="Mezcla anterior (P)">⏮ Mezcla</button>
+      <button id="back" title="-10 s (←)">−10 s</button>
+      <button id="play" class="primary" title="Reproducir / pausa (espacio)">▶ Play</button>
+      <button id="fwd" title="+10 s (→)">+10 s</button>
+      <button id="nextMix" title="Mezcla siguiente (N)">Mezcla ⏭</button>
+      <span id="time">0:00 / 0:00</span>
+      <span id="now"></span>
+    </div>
+    <div class="legend">
+      <label><input type="checkbox" data-kind="load" checked><span class="sw" style="background:var(--load)"></span>Temas cargados</label>
+      <label><input type="checkbox" data-kind="transition" checked><span class="sw" style="background:var(--blue)"></span>Transiciones</label>
+      <label><input type="checkbox" data-kind="cut" checked><span class="sw" style="background:var(--cut-ok)"></span>Fader cuts (✓ a tiempo / ✗ fuera)</label>
+      <label><input type="checkbox" data-kind="swap" checked><span class="sw" style="background:var(--swap)"></span>Bass swaps</label>
+      <span class="hint">Teclas: espacio · ← → · N / P · + / − zoom</span>
+    </div>
+    <audio id="audio" preload="metadata"></audio>
+  </section>
+  <section class="card" id="listCard" hidden>
+    <table>
+      <thead><tr><th>Tiempo</th><th>Qué</th><th>Detalle</th></tr></thead>
+      <tbody id="events"></tbody>
+    </table>
+  </section>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const audio = $("audio");
+const PREROLL = {transition: 6, cut: 3, swap: 4, load: 1};
+let S = null;            // sesión cargada
+let events = [];         // marcas (segundos desde el inicio del audio)
+let duration = 0, t0 = 0, peaks = null, peaksPerS = 20;
+let fakeTime = 0;        // sin audio: posición elegida con clics
+let zoom = 60;           // segundos visibles en el zoom
+const show = {load: true, transition: true, cut: true, swap: true};
+
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const ms = (iso) => iso ? new Date(iso).getTime() : NaN;
+const sec = (iso) => (ms(iso) - t0) / 1000;
+function fmt(s) {
+  if (!isFinite(s)) return "–";
+  const neg = s < 0; s = Math.abs(s);
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = Math.floor(s % 60);
+  return (neg ? "-" : "") + (h ? `${h}:${String(m).padStart(2, "0")}` : m) + ":" + String(x).padStart(2, "0");
+}
+const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const name = (o) => o ? ([o.artist, o.title].filter(Boolean).join(" – ") || o.id || "?") : "?";
+const hasAudio = () => !!(S && S.audio && S.audio.file && !audio.error && audio.src);
+const now = () => hasAudio() ? audio.currentTime : fakeTime;
+
+async function loadList() {
+  const list = await (await fetch("/api/sessions")).json();
+  const sel = $("sessions");
+  sel.innerHTML = "";
+  if (!list.length) { $("empty").hidden = false; return; }
+  for (const s of list) {
+    const o = document.createElement("option");
+    o.value = s.id;
+    const d = (s.started_at || "").slice(0, 16).replace("T", " ");
+    o.textContent = `${d} · ${s.source || "—"} · ${s.transitions} trans.` +
+      (s.has_audio ? ` · ${fmt(s.duration_s)}` : " · sin audio");
+    sel.appendChild(o);
+  }
+  const want = new URLSearchParams(location.search).get("s");
+  if (want && list.some((s) => s.id === want)) sel.value = want;
+  await loadSession(sel.value);
+}
+
+async function loadSession(id) {
+  S = await (await fetch(`/api/session/${encodeURIComponent(id)}`)).json();
+  history.replaceState(null, "", `?s=${encodeURIComponent(id)}`);
+  const a = S.audio || {};
+  t0 = ms(a.started_at || S.started_at);
+  duration = a.duration_s || Math.max(1, (ms(S.ended_at) - t0) / 1000) || 1;
+  peaks = null; peaksPerS = a.peaks_per_s || 20; fakeTime = 0;
+  audio.pause(); audio.removeAttribute("src");
+  if (a.file) {
+    audio.src = `/audio/${encodeURIComponent(id)}`;
+    if (a.peaks_file) {
+      const r = await fetch(`/peaks/${encodeURIComponent(id)}`);
+      if (r.ok) peaks = new Uint8Array(await r.arrayBuffer());
+    }
+  }
+  $("noaudio").hidden = !!a.file;
+  $("noaudio").textContent = a.file ? "" : `Esta sesión no tiene audio grabado${a.error ? " (" + a.error + ")" : ""}: solo se pueden ver las marcas.`;
+  $("info").textContent = `${S.tracks.length} temas · ${S.transitions.length} transiciones · ` +
+    `${S.fader_cuts.length} ráfagas de cortes · ${S.bass_swaps.length} bass swaps` +
+    (a.device ? ` · audio: ${a.device}` : "");
+  buildEvents();
+  $("player").hidden = false; $("listCard").hidden = false;
+  draw(); renderList();
+}
+
+function buildEvents() {
+  events = [];
+  for (const t of S.tracks) events.push({kind: "load", t: sec(t.at), deck: t.deck, d: t,
+    label: `Deck ${t.deck}: ${name(t)}`, detail: `${t.bpm ?? "?"} BPM · ${t.camelot ?? "?"}`});
+  for (const tr of S.transitions) {
+    const c = tr.compatibility || {};
+    const ok = c.compatible === true ? '<span class="ok">compatible</span>' :
+               c.compatible === false ? '<span class="bad">NO compatible</span>' : "";
+    events.push({kind: "transition", t: sec(tr.start), end: sec(tr.end), d: tr,
+      label: `Transición ${tr.out.deck}→${tr.in.deck} · ${tr.duration_s.toFixed(1)} s`,
+      detail: `${esc(name(tr.out))} (${tr.out.camelot ?? "?"}) → ${esc(name(tr.in))} (${tr.in.camelot ?? "?"}) ${ok}`});
+  }
+  for (const b of S.fader_cuts) {
+    const marks = b.cuts.map((c) => c.on_beat === true ? "✓" : c.on_beat === false ? "✗" : "·").join("");
+    const offs = b.cuts.map((c) => c.beat_offset_ms).filter((v) => v != null);
+    const avg = offs.length ? ` · desfase medio ${Math.round(offs.reduce((x, y) => x + Math.abs(y), 0) / offs.length)} ms` : "";
+    const rated = b.cuts.filter((c) => c.on_beat != null);
+    const state = !rated.length ? "unk" : rated.every((c) => c.on_beat) ? "ok" : "bad";
+    events.push({kind: "cut", t: sec(b.at), d: b, state,
+      cuts: b.cuts.map((c) => ({t: sec(c.at), ok: c.on_beat})),
+      label: `Fader cuts deck ${b.deck} · ${b.count}`, detail: `${marks}${avg}`});
+  }
+  const yn = (v) => v === true ? '<span class="ok">sí</span>' : v === false ? '<span class="bad">no</span>' : "?";
+  for (const s of S.bass_swaps) events.push({kind: "swap", t: sec(s.at), d: s,
+    label: `Bass swap ${s.from_deck}→${s.to_deck}`,
+    detail: `separación ${s.gap_beats.toFixed(1)} beats · compás ${yn(s.on_bar)} · frase ${yn(s.on_phrase)}`});
+  events.sort((a, b) => a.t - b.t);
+}
+
+const KIND_ES = {load: "Tema", transition: "Transición", cut: "Fader cut", swap: "Bass swap"};
+function renderList() {
+  const tb = $("events");
+  tb.innerHTML = "";
+  events.forEach((e, i) => {
+    if (!show[e.kind]) return;
+    const tr = document.createElement("tr");
+    tr.dataset.i = i;
+    tr.innerHTML = `<td class="t">${fmt(e.t)}</td><td><span class="tag" style="background:${kindColor(e)};color:#111">${KIND_ES[e.kind]}</span></td>` +
+      `<td><b>${esc(e.label)}</b><br><span class="hint">${e.detail}</span></td>`;
+    tr.onclick = () => seek(e.t - (PREROLL[e.kind] || 0), true);
+    tb.appendChild(tr);
+  });
+}
+
+function kindColor(e) {
+  if (e.kind === "transition") return css("--blue");
+  if (e.kind === "cut") return css(e.state === "ok" ? "--cut-ok" : e.state === "bad" ? "--cut-bad" : "--cut-unk");
+  if (e.kind === "swap") return css("--swap");
+  return css("--load");
+}
+
+function seek(t, play) {
+  t = Math.max(0, Math.min(duration, t));
+  if (hasAudio()) { audio.currentTime = t; if (play) audio.play(); }
+  else fakeTime = t;
+  draw();
+}
+
+function currentTrack(t) {
+  // Lo que suena: el tema entrante de la última transición terminada; si no, el último cargado.
+  let cur = null;
+  for (const e of events) {
+    if (e.t > t) break;
+    if (e.kind === "transition" && e.end <= t) cur = e.d.in;
+    if (e.kind === "transition" && e.end > t) return `Mezclando <b>${esc(name(e.d.out))}</b> → <b>${esc(name(e.d.in))}</b>`;
+    if (e.kind === "load" && !cur) cur = e.d;
+  }
+  return cur ? `Sonando: <b>${esc(name(cur))}</b>` : "";
+}
+
+// ----------------------------------------------------------------- dibujo
+function setup(c) {
+  const r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  if (c.width !== Math.round(r.width * dpr) || c.height !== Math.round(r.height * dpr)) {
+    c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr);
+  }
+  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [g, r.width, r.height];
+}
+
+function drawRange(c, a, b, detailed) {
+  const [g, W, H] = setup(c);
+  g.clearRect(0, 0, W, H);
+  const x = (t) => (t - a) / (b - a) * W;
+  const t = now();
+  // transiciones (bandas)
+  if (show.transition) for (const e of events) if (e.kind === "transition" && e.end >= a && e.t <= b) {
+    g.fillStyle = css("--trans"); g.fillRect(x(e.t), 0, Math.max(2, x(e.end) - x(e.t)), H);
+    if (detailed) { g.fillStyle = css("--blue"); g.font = "12px Segoe UI, sans-serif";
+      g.fillText(`${e.d.out.deck}→${e.d.in.deck} ${e.d.duration_s.toFixed(1)} s`, Math.max(2, x(e.t)) + 3, H - 6); }
+  }
+  // forma de onda
+  const mid = H / 2, amp = H / 2 - (detailed ? 18 : 4);
+  if (peaks && peaks.length) {
+    const step = (b - a) / W;
+    for (let px = 0; px < W; px++) {
+      const s0 = a + px * step, i0 = Math.floor(s0 * peaksPerS), i1 = Math.max(i0 + 1, Math.floor((s0 + step) * peaksPerS));
+      let m = 0;
+      for (let i = Math.max(0, i0); i < Math.min(peaks.length, i1); i++) m = Math.max(m, peaks[i]);
+      const h = (m / 255) * amp;
+      g.fillStyle = s0 <= t ? css("--wave-played") : css("--wave");
+      g.fillRect(px, mid - h, 1, Math.max(1, h * 2));
+    }
+  } else {
+    g.strokeStyle = css("--line"); g.beginPath(); g.moveTo(0, mid); g.lineTo(W, mid); g.stroke();
+  }
+  // temas cargados
+  if (show.load) for (const e of events) if (e.kind === "load" && e.t >= a && e.t <= b) {
+    g.strokeStyle = css("--load"); g.setLineDash([3, 3]); g.beginPath(); g.moveTo(x(e.t), 0); g.lineTo(x(e.t), H); g.stroke(); g.setLineDash([]);
+    if (detailed) { g.fillStyle = css("--load"); g.font = "12px Segoe UI, sans-serif"; g.fillText(e.label.slice(0, 60), x(e.t) + 3, 13); }
+  }
+  // fader cuts
+  if (show.cut) for (const e of events) if (e.kind === "cut") for (const c2 of e.cuts) if (c2.t >= a && c2.t <= b) {
+    g.strokeStyle = css(c2.ok === true ? "--cut-ok" : c2.ok === false ? "--cut-bad" : "--cut-unk");
+    g.lineWidth = detailed ? 2 : 1;
+    g.beginPath(); g.moveTo(x(c2.t), detailed ? 18 : 0); g.lineTo(x(c2.t), H - (detailed ? 18 : 0)); g.stroke();
+    if (detailed) { g.fillStyle = g.strokeStyle; g.font = "bold 12px Segoe UI, sans-serif";
+      g.fillText(c2.ok === true ? "✓" : c2.ok === false ? "✗" : "·", x(c2.t) - 4, 30); }
+    g.lineWidth = 1;
+  }
+  // bass swaps
+  if (show.swap) for (const e of events) if (e.kind === "swap" && e.t >= a && e.t <= b) {
+    const X = x(e.t), s = detailed ? 7 : 5;
+    g.fillStyle = css("--swap"); g.beginPath(); g.moveTo(X, H - 2 - 2 * s); g.lineTo(X + s, H - 2); g.lineTo(X - s, H - 2); g.closePath(); g.fill();
+    if (detailed) g.fillText(`bass ${e.d.from_deck}→${e.d.to_deck}`, X + s + 2, H - 22);
+  }
+  // cursor
+  if (t >= a && t <= b) { g.fillStyle = css("--accent"); g.fillRect(x(t) - 1, 0, 2, H); }
+  return x;
+}
+
+function draw() {
+  if (!S) return;
+  const t = now();
+  drawRange($("overview"), 0, duration, false);
+  // rectángulo del zoom sobre la vista general
+  const [a, b] = zoomRange(t);
+  const c = $("overview"), g = c.getContext("2d"), W = c.getBoundingClientRect().width, H = c.getBoundingClientRect().height;
+  g.strokeStyle = "rgba(255,255,255,.55)"; g.strokeRect(a / duration * W, 1, Math.max(3, (b - a) / duration * W), H - 2);
+  drawRange($("detail"), a, b, true);
+  $("time").textContent = `${fmt(t)} / ${fmt(duration)}`;
+  $("now").innerHTML = currentTrack(t);
+  $("play").textContent = hasAudio() && !audio.paused ? "❚❚ Pausa" : "▶ Play";
+  // fila actual de la lista
+  let cur = -1;
+  events.forEach((e, i) => { if (show[e.kind] && e.t <= t + 0.05) cur = i; });
+  for (const tr of $("events").children) tr.classList.toggle("current", Number(tr.dataset.i) === cur);
+}
+
+function zoomRange(t) {
+  const z = Math.min(zoom, duration);
+  let a = t - z / 2;
+  a = Math.max(0, Math.min(duration - z, a));
+  return [a, a + z];
+}
+
+function clickSeek(c, range) {
+  c.addEventListener("click", (ev) => {
+    const r = c.getBoundingClientRect(), [a, b] = range();
+    seek(a + (ev.clientX - r.left) / r.width * (b - a), false);
+  });
+}
+clickSeek($("overview"), () => [0, duration]);
+clickSeek($("detail"), () => zoomRange(now()));
+$("detail").addEventListener("wheel", (ev) => {
+  ev.preventDefault();
+  zoom = Math.max(5, Math.min(1800, zoom * (ev.deltaY > 0 ? 1.25 : 0.8))); draw();
+}, {passive: false});
+
+function mixJump(dir) {
+  const t = now();
+  const mixes = events.filter((e) => e.kind === "transition");
+  const target = dir > 0 ? mixes.find((e) => e.t - PREROLL.transition > t + 0.5)
+                         : [...mixes].reverse().find((e) => e.t - PREROLL.transition < t - 1.5);
+  if (target) seek(target.t - PREROLL.transition, true);
+}
+$("prevMix").onclick = () => mixJump(-1);
+$("nextMix").onclick = () => mixJump(1);
+$("back").onclick = () => seek(now() - 10, false);
+$("fwd").onclick = () => seek(now() + 10, false);
+$("play").onclick = () => { if (!hasAudio()) return; audio.paused ? audio.play() : audio.pause(); };
+$("sessions").onchange = (e) => loadSession(e.target.value);
+for (const cb of document.querySelectorAll(".legend input")) cb.onchange = () => {
+  show[cb.dataset.kind] = cb.checked; renderList(); draw();
+};
+document.addEventListener("keydown", (ev) => {
+  if (ev.target.tagName === "SELECT") return;
+  const k = ev.key;
+  if (k === " ") { ev.preventDefault(); $("play").click(); }
+  else if (k === "ArrowLeft") seek(now() - 5, false);
+  else if (k === "ArrowRight") seek(now() + 5, false);
+  else if (k === "n" || k === "N") mixJump(1);
+  else if (k === "p" || k === "P") mixJump(-1);
+  else if (k === "+") { zoom = Math.max(5, zoom * 0.8); draw(); }
+  else if (k === "-") { zoom = Math.min(1800, zoom * 1.25); draw(); }
+});
+audio.addEventListener("loadedmetadata", () => { if (isFinite(audio.duration) && audio.duration > 0) duration = audio.duration; draw(); });
+for (const ev of ["play", "pause", "seeked"]) audio.addEventListener(ev, draw);
+window.addEventListener("resize", draw);
+(function tick() { if (S && hasAudio() && !audio.paused) draw(); requestAnimationFrame(tick); })();
+loadList().catch((e) => { $("empty").hidden = false; $("empty").textContent = "No se pudo cargar el histórico: " + e; });
+</script>
+</body>
+</html>

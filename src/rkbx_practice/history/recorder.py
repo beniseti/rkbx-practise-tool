@@ -35,16 +35,29 @@ class SessionRecorder:
         self.decks = decks
         self._lock = threading.Lock()
         self._data: dict | None = None
+        self.stem: str | None = None    # nombre base de los archivos de la sesión en curso
+
+    def _reserve_stem(self, started: datetime) -> str:
+        """`session-AAAAMMDD-HHMMSS[-n]` libre (para el .json, el audio y la forma de onda)."""
+        base = f"session-{started.strftime('%Y%m%d-%H%M%S')}"
+        stem, n = base, 1
+        while self.dir.exists() and any(self.dir.glob(f"{stem}.*")):
+            n += 1
+            stem = f"{base}-{n}"
+        return stem
 
     @property
     def recording(self) -> bool:
         return self._data is not None
 
-    def start(self, source_name: str | None, extra_settings: dict | None = None) -> None:
+    def start(self, source_name: str | None, extra_settings: dict | None = None) -> str:
+        """Empieza a grabar. Devuelve el nombre base de los archivos de la sesión."""
+        now = datetime.now()
         with self._lock:
+            self.stem = self._reserve_stem(now)
             self._data = {
                 "format_version": FORMAT_VERSION,
-                "started_at": _iso(datetime.now()),
+                "started_at": _iso(now),
                 "ended_at": None,
                 "source": source_name,
                 "settings": {**asdict(self.settings), "decks": self.decks, **(extra_settings or {})},
@@ -52,17 +65,22 @@ class SessionRecorder:
                 "transitions": [],
                 "fader_cuts": [],
                 "bass_swaps": [],
+                "audio": None,
             }
+        return self.stem
 
-    def stop(self, pending_events: list[LiveEvent] | None = None) -> Path | None:
+    def stop(self, pending_events: list[LiveEvent] | None = None, audio: dict | None = None) -> Path | None:
         if pending_events:
             self.handle(pending_events)
         with self._lock:
             if self._data is None:
                 return None
             data, self._data = self._data, None
+            stem, self.stem = self.stem, None
         data["ended_at"] = _iso(datetime.now())
-        return self._save(data)
+        if audio is not None:
+            data["audio"] = audio
+        return self._save(data, stem)
 
     def counts(self) -> dict[str, int]:
         with self._lock:
@@ -132,14 +150,10 @@ class SessionRecorder:
                 "gap_beats": round(ev.gap_beats, 2), "on_bar": ev.on_bar, "on_phrase": ev.on_phrase,
             })
 
-    def _save(self, data: dict) -> Path:
+    def _save(self, data: dict, stem: str | None = None) -> Path:
         self.dir.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.fromisoformat(data["started_at"]).strftime("%Y%m%d-%H%M%S")
-        path = self.dir / f"session-{stamp}.json"
-        n = 1
-        while path.exists():
-            n += 1
-            path = self.dir / f"session-{stamp}-{n}.json"
+        stem = stem or self._reserve_stem(datetime.fromisoformat(data["started_at"]))
+        path = self.dir / f"{stem}.json"
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(path)
@@ -162,6 +176,14 @@ def summarize(data: dict) -> str:
         f"Origen: {data.get('source') or '—'}",
         f"Temas cargados: {len(data.get('tracks', []))}",
     ]
+    audio = data.get("audio")
+    if audio:
+        if audio.get("file"):
+            m, sec = divmod(int(audio.get("duration_s") or 0), 60)
+            lines.insert(2, f"Audio: {audio['file']} ({m}:{sec:02d}, {audio.get('device') or '?'})"
+                         + (f" · aviso: {audio['error']}" if audio.get("error") else ""))
+        else:
+            lines.insert(2, f"Audio: no se grabó ({audio.get('error') or 'sin datos'})")
     for t in data.get("tracks", []):
         name = f"{t.get('artist') or ''} - {t.get('title') or t.get('id') or t.get('anlz_path')}"
         lines.append(f"  {t['at'][11:19]}  deck {t['deck']}  {name}  "

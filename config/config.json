@@ -51,6 +51,17 @@
   "history": {
     "dir": "history"
   },
+  "audio": {
+    "enabled": true,
+    "device": null,
+    "loopback": true,
+    "sample_rate": 44100,
+    "channels": 2,
+    "format": "flac",
+    "block_ms": 100,
+    "peaks_per_s": 20,
+    "review_http_port": 8766
+  },
   "ui": {
     "always_on_top": true,
     "start_compact": false,
@@ -58,7 +69,10 @@
   },
   "lights": {
     "enabled": false,
-    "esp32_ip": ["rkbx-luces.local", "192.168.4.1"],
+    "esp32_ip": [
+      "rkbx-luces.local",
+      "192.168.4.1"
+    ],
     "esp32_port": 4210,
     "latency_compensation_ms": 0,
     "events_dir": "data/lights",

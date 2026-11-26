@@ -38,6 +38,8 @@ class PracticeController:
                                         cfg.session, decks=cfg.rekordbox.decks)
         self.poller: LivePoller | None = None
         self.unknown_loads: list[TrackLoaded] = []
+        self.audio = None     # AudioRecorder mientras se graba la sesión
+        self._review = None   # servidor de la página de revisión
         self._lights = None   # LightsManager, se crea al usarlo (abre un socket UDP)
 
     @property
@@ -46,6 +48,15 @@ class PracticeController:
             from .lights.manager import LightsManager
             self._lights = LightsManager(self.cfg, self.library, self.grids)
         return self._lights
+
+    def open_review(self) -> str:
+        """Arranca (una vez) la página de revisión de sesiones y devuelve su URL."""
+        from .review import ReviewServer
+        if self._review is None:
+            self._review = ReviewServer(self.cfg.resolve_path(self.cfg.history.dir),
+                                        port=self.cfg.audio.review_http_port)
+            self._review.start()
+        return self._review.url
 
     def set_lights_enabled(self, on: bool) -> None:
         self.lights.engine.enabled = on
@@ -116,11 +127,20 @@ class PracticeController:
         settings = self.session.settings if self.session else self.cfg.session
         self.recorder.settings = settings
         extra = {"crossfader_enabled": self.cfg.mixer.crossfader_enabled}
-        self.recorder.start(self.source_label, extra)
+        stem = self.recorder.start(self.source_label, extra)
+        self.audio = None
+        if self.cfg.audio.enabled:
+            from .audio import AudioRecorder, extension
+            directory = self.cfg.resolve_path(self.cfg.history.dir)
+            directory.mkdir(parents=True, exist_ok=True)
+            self.audio = AudioRecorder(self.cfg.audio)
+            self.audio.start(directory / f"{stem}{extension(self.cfg.audio.format)}")
 
     def stop_recording(self):
         pending = self.poller.flush_pipeline() if self.poller else []
-        return self.recorder.stop(pending)
+        audio_info = self.audio.stop() if self.audio is not None else None
+        self.audio = None
+        return self.recorder.stop(pending, audio=audio_info)
 
     # --- bucle en vivo ------------------------------------------------
     def start_live(self, listener: LiveListener) -> LivePoller:
