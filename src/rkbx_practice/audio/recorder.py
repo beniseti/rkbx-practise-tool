@@ -56,6 +56,7 @@ class AudioRecorder:
         self.heard = False             # ya ha sonado algo
         self.auto_stopped = False      # se paró sola tras el silencio
         self.discarded_frames = 0      # silencio final descartado
+        self.skipped_frames = 0        # silencio inicial no grabado (hasta que suena algo)
         self._pending: list = []       # silencio aún sin escribir (int16)
         self._pending_frames = 0
         self._peaks = bytearray()
@@ -115,9 +116,10 @@ class AudioRecorder:
             "padded_s": round(self.padded_frames / self.cfg.sample_rate, 3),
             "auto_stopped": self.auto_stopped,
             "discarded_silence_s": round(self.discarded_frames / self.cfg.sample_rate, 3),
+            "skipped_leading_s": round(self.skipped_frames / self.cfg.sample_rate, 3),
             "peaks_file": peaks_file,
             "peaks_per_s": self.cfg.peaks_per_s,
-            "error": self.error,
+            "error": self.error or (None if self.frames else "no sonó nada mientras se grababa"),
         }
 
     # ------------------------------------------------------------------
@@ -157,6 +159,11 @@ class AudioRecorder:
                         pass
             self._flush_peak()
             self._save_peaks()
+            if self.frames == 0 and self.path is not None:
+                try:                                   # no dejar un archivo de audio vacío
+                    self.path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     def _loop(self, source, writer) -> None:
         import numpy as np
@@ -173,6 +180,13 @@ class AudioRecorder:
                 data = np.repeat(data[:, :1], self.cfg.channels, axis=1) if data.shape[1] == 1 \
                     else data[:, :self.cfg.channels]
             if self.started_wall is None:
+                # Silencio inicial (pedido del usuario: grabar y no dar al play guardaba audio vacío):
+                # no se graba nada hasta que suena algo; el audio empieza ahí.
+                peak = float(np.abs(data).max())
+                self.level_db = 20 * math.log10(peak) if peak > 1e-5 else -100.0
+                if self.level_db < self.cfg.silence_threshold_db:
+                    self.skipped_frames += len(data)
+                    continue
                 self.started_wall = now - len(data) / sr
             behind = (now - self.started_wall) * sr - (self.frames + self._pending_frames + len(data))
             if behind > MAX_DRIFT_S * sr:

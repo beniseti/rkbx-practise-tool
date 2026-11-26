@@ -234,27 +234,32 @@ def _scripted(script, auto_stop_s=1.0):
 
 
 def test_auto_stop_after_silence_cuts_where_sound_stopped(tmp_path):
-    # 0,5 s de silencio inicial (se conserva), 1 s de sonido, 0,4 s de silencio (vuelve el sonido:
+    # 0,5 s de silencio inicial (no se graba: el audio empieza al sonar), 1 s de sonido, 0,4 s de silencio (vuelve el sonido:
     # se conserva), 0,3 s de sonido y luego silencio largo → para sola y descarta ese silencio.
     rec, writer = _scripted("....." + "S" * 10 + "...." + "SSS" + "." * 40, auto_stop_s=1.0)
     rec.start(tmp_path / "s.flac")
     rec._thread.join(5)
     info = rec.stop()
     assert rec.auto_stopped and info["auto_stopped"]
-    assert rec.seconds == pytest.approx(0.5 + 1.0 + 0.4 + 0.3)
+    assert rec.seconds == pytest.approx(1.0 + 0.4 + 0.3)
+    assert info["skipped_leading_s"] == pytest.approx(0.5)
+    assert rec.started_wall == pytest.approx(1_700_000_000.0 + 0.5)   # hora del primer sonido
     assert writer.frames == rec.frames
     assert info["discarded_silence_s"] == pytest.approx(1.0)
-    assert rec.ended_wall == pytest.approx(rec.started_wall + 2.2)
+    assert rec.ended_wall == pytest.approx(rec.started_wall + 1.7)
     last = np.concatenate(writer.blocks)[-300:]
     assert np.abs(last).max() > 0.4                       # el archivo acaba con sonido
 
 
 def test_no_auto_stop_before_any_sound_and_manual_stop_keeps_tail(tmp_path):
     rec, writer = _scripted("." * 30, auto_stop_s=1.0)      # 3 s sin sonar nunca: no se para
+    (tmp_path / "s.flac").write_bytes(b"")                  # el escritor real crea el archivo
     rec.start(tmp_path / "s.flac")
     rec._thread.join(5)
     info = rec.stop()
-    assert not rec.auto_stopped and rec.seconds == pytest.approx(3.0, abs=0.11)
+    assert not rec.auto_stopped and rec.seconds == 0 and writer.frames == 0
+    assert info["file"] is None and "no sonó nada" in info["error"]
+    assert not (tmp_path / "s.flac").exists()               # no queda un audio vacío
     rec, writer = _scripted("SSSSS" + "." * 5, auto_stop_s=1.0)  # parada a mano con 0,5 s de silencio
     rec.start(tmp_path / "t.flac")
     rec._thread.join(5)

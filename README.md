@@ -93,6 +93,7 @@ alinearlo con las transiciones, fader cuts y bass swaps. Configuración en `audi
 - `loopback`: `true` graba una salida (lo que suena); `false` graba una entrada (línea/micro).
 - `format`: `flac` (por defecto, ~300 MB por hora), `wav` u `ogg` (mucho más pequeño, con pérdida).
 - `enabled: false` desactiva la grabación de audio.
+- El audio empieza cuando suena algo: el silencio antes de dar al play no se graba.
 - `auto_stop_silence_s` (300 = 5 min): si deja de sonar ese tiempo seguido, la grabación se para
   sola y se corta donde dejó de sonar (0 = nunca). `silence_threshold_db`: nivel por debajo del
   cual se considera silencio (−50 dBFS).

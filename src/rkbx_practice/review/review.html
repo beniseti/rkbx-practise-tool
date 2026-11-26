@@ -281,7 +281,7 @@ function renderList() {
     if (!show[e.kind]) return;
     const tr = document.createElement("tr");
     tr.dataset.i = i;
-    tr.innerHTML = `<td class="t">${fmt(e.t)}</td><td><span class="tag" style="background:${kindColor(e)};color:#111">${KIND_ES[e.kind]}</span></td>` +
+    tr.innerHTML = `<td class="t">${e.t < 0 ? "antes del audio" : fmt(e.t)}</td><td><span class="tag" style="background:${kindColor(e)};color:#111">${KIND_ES[e.kind]}</span></td>` +
       `<td><b>${esc(e.label)}</b><br><span class="hint">${e.detail}</span></td>`;
     tr.onclick = () => seek(e.t - (PREROLL[e.kind] || 0), true);
     tb.appendChild(tr);

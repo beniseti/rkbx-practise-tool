@@ -567,8 +567,8 @@ class MainWindow(QMainWindow):
                 a_txt = "audio desactivado (audio.enabled)"
             elif audio.error:
                 a_txt = f"SIN AUDIO: {audio.error}"
-            elif audio.level_db is None:
-                a_txt = "audio: esperando sonido…"
+            elif audio.level_db is None or audio.started_wall is None:
+                a_txt = "audio: esperando a que suene algo (aún no se graba)"
             elif audio.silence_s >= 10:
                 left = max(0, self.cfg.audio.auto_stop_silence_s - audio.silence_s)
                 a_txt = f"audio: {audio.silence_s:.0f} s sin sonido (se para sola en {left:.0f} s)"
