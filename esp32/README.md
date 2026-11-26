@@ -16,6 +16,8 @@ La lógica de los efectos (`src/lights_core.cpp`) no depende de Arduino y se pru
 
 ## Montaje (WS2811 de 12 V, fuente de 12 V / 150 W)
 
+![Esquema de montaje](../docs/montaje_luces.png)
+
 ```
 Fuente 12 V ──┬──────────── +12 V tira 1, tira 2, tira 3 (cada tira con su cable desde la fuente)
               ├─ conversor DC-DC 12 V → 5 V ── pin 5V (VIN) del ESP32
