@@ -112,9 +112,9 @@ def test_generate_show_from_structure(tmp_path):
     assert ev[1].fx == "wave" and ev[1].params["color"] == pal["primary"]   # mismos tonos del tema
     assert ev[33].fx in {"pulse", "alternate", "wave", "chase"} and ev[33].params["bpm"] == "live"
     assert ev[97].fx == "twinkle"
-    assert ev[129].fx == "build" and ev[129].params["dur_ms"] == 16000      # 32 beats a 120 BPM
-    assert ev[157].fx == "strobe" and ev[157].params["dur_ms"] == 1500      # último compás hasta el apagón
-    assert ev[160].fx == "off" and ev[160].label == "Apagón"                # apagón 1 beat antes del drop
+    assert ev[129].fx == "build" and ev[129].params["dur_ms"] == 12000      # 24 beats a 120 BPM
+    assert ev[153].fx == "strobe" and ev[153].params["dur_ms"] == 2000      # compás antes del apagón
+    assert ev[157].fx == "off" and ev[157].label == "Apagón"                # apagón 4 beats antes del drop
     drop = next(x for x in a.sections if x.role == "drop")
     assert drop.tier == "hard"                                              # vuelve el bombo a tope tras el break
     assert ev[161].fx == "chase" and ev[161].params["color"] == pal["accent"]   # fuerte: acento en movimiento
@@ -124,7 +124,7 @@ def test_generate_show_from_structure(tmp_path):
     store.save(show)
     again = store.load("1001")
     assert [(e.beat, e.fx, e.params) for e in again.events] == [(e.beat, e.fx, e.params) for e in show.events]
-    assert json.loads(store.path("1001").read_text())["format_version"] == 6
+    assert json.loads(store.path("1001").read_text())["format_version"] == 7
 
 
 def test_drop_intensity_tiers_and_variants():
@@ -414,7 +414,7 @@ def test_old_show_files_are_regenerated_unless_manual(library, tmp_path):
     (tmp_path / "1001.json").write_text(json.dumps(old))
     mgr = LightsManager(cfg, library, BeatGridCache(), sender=Sender(), analyzer=lambda p: techno_analysis())
     show = mgr.load_or_generate(library.track("1001"))
-    assert show.format_version == 6 and any(e.fx == "build" for e in show.events)
+    assert show.format_version == 7 and any(e.fx == "build" for e in show.events)
     old["events"].append({"beat": 9, "label": "manual", "source": "manual", "fx": "flash", "params": {}})
     (tmp_path / "1001.json").write_text(json.dumps(old))
     show = mgr.load_or_generate(library.track("1001"))
@@ -446,7 +446,7 @@ def test_cli_regenerate_keeps_manual(library, tmp_path, monkeypatch):
     assert cli.main(["--config", str(cfg_path), "--library-json", lib_json,
                      "lights", "regenerate", "--playlist", "Favoritos"]) == 0
     assert store.load("1001").events[0].source == "manual"          # conservado
-    assert store.load("1002").format_version == 6                    # regenerado
+    assert store.load("1002").format_version == 7                    # regenerado
     assert cli.main(["--config", str(cfg_path), "--library-json", lib_json,
                      "lights", "regenerate", "--playlist", "Favoritos", "--force"]) == 0
     assert store.load("1001").events[0].source == "structure"
@@ -457,13 +457,14 @@ def test_drop_hit_can_be_reenabled():
     rules = {"drop_hit": {"fx": "flash", "params": {"color": "blanco", "dur_ms": 400}},
              "blackout": {"fx": "off", "params": {}, "beats": 2}}
     ev = {e.beat: e for e in generate_show("1", "", a, rules).events}
-    assert ev[159].fx == "off" and ev[161].fx == "flash" and ev[162].fx == "chase"
+    # «beats: 2» en config.json no baja del mínimo de 4 beats de apagón (pedido del usuario)
+    assert ev[157].fx == "off" and ev[161].fx == "flash" and ev[162].fx == "chase"
 
 
 def test_default_backgrounds_always_move():
     """Pedido del usuario: las luces nunca se quedan estáticas (salvo el apagón antes del drop)."""
     from rkbx_practice.lights.show import effective_rules
-    moving = {"wave", "twinkle", "alternate", "chase", "pulse", "build", "strobe", "flash", "rainbow"}
+    moving = {"wave", "twinkle", "alternate", "chase", "pulse", "build", "prebuild", "strobe", "flash", "rainbow"}
     r = effective_rules(LightsConfig().rules)
     for key, variants in r.items():
         for rule in variants:
@@ -612,3 +613,19 @@ def test_udp_sender_unresolved_name_sends_nothing():
     assert tx.targets == []
     assert tx.send(LightCommand("flash", {})) is False
     tx.close()
+
+
+def test_chained_buildups_use_one_prebuild_then_final_build():
+    """Pedido del usuario: varias subidas seguidas → un «prebuild» que carga los LEDs hasta la
+    última subida, que hace el «build»; luego pre-drop y apagón de al menos 4 beats."""
+    from rkbx_practice.lights.analysis import build_analysis
+    grid = BeatGrid.uniform(120.0, n_beats=160)
+    phrases = [Phrase(1, "Intro"), Phrase(17, "Up"), Phrase(49, "Up"), Phrase(81, "Up"), Phrase(113, "Chorus")]
+    a = build_analysis(grid, phrases, {}, "")
+    assert [s.role for s in a.sections] == ["intro", "buildup", "buildup", "buildup", "drop"]
+    ev = {e.beat: e for e in generate_show("1", "", a, {}).events}
+    assert ev[17].fx == "prebuild" and ev[17].params["dur_ms"] == 32000     # 64 beats hasta la última subida
+    assert 49 not in ev                                                     # sin builds repetidos
+    assert ev[81].fx == "build" and ev[81].params["dur_ms"] == 12000        # build final hasta el pre-drop
+    assert ev[105].fx == "strobe" and ev[109].fx == "off"                   # pre-drop y apagón (4 beats)
+    assert ev[113].fx is not None and ev[113].fx != "off"                   # drop en movimiento

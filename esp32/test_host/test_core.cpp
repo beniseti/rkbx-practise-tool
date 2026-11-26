@@ -180,6 +180,27 @@ int main() {
   CHECK(u0[3].b == 255 && u0[4].b == 0 && u0[8].b == 0 && u0[9].b == 255 && u0[13].b == 255);
   CHECK(u1[0].b == 0 && u1[4].b == 255 && u1[9].b == 0);   // tira 2: zonas 4 (no), 5 (sí), 6 (no)
 
+  // --- prebuild: la tira se va llenando (a mitad de duración, la primera mitad encendida)
+  Engine pb;
+  pb.begin(3, 3, 30);
+  RGB q0[30], q1[30], q2[30];
+  RGB* qout[3] = {q0, q1, q2};
+  Command off;
+  off.fx = Fx::Off;
+  off.zoneMask = parseZones("all", 3, 3);
+  pb.apply(off, 0);
+  Command pre;
+  pre.fx = parseFx("prebuild");
+  pre.hasColor = parseColor("rojo", pre.color);
+  pre.durMs = 10000;
+  pre.zoneMask = parseZones("all", 3, 3);
+  pb.apply(pre, 1000);
+  pb.render(6000, qout);                     // p = 0,5
+  CHECK(pre.fx == Fx::Prebuild);
+  CHECK(q0[3].r > 100 && q0[25].r == 0 && q2[5].r > 100 && q2[29].r == 0);
+  pb.render(10900, qout);                    // casi al final: toda la tira
+  CHECK(q0[28].r > 200);
+
   if (failures) {
     printf("%d fallos\n", failures);
     return 1;

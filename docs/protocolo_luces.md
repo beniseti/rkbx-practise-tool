@@ -56,6 +56,7 @@ luces nunca se quedan estáticas**; los fondos por defecto son siempre efectos e
 | `flash` | `color`, `dur_ms` | Destello que se apaga poco a poco |
 | `strobe` | `color`, `dur_ms`, `hz` | Estroboscopio |
 | `rainbow` | `dur_ms`, `speed` | Arcoíris que se mueve |
+| `prebuild` | `color`, `dur_ms` | Carga: cada tira se va llenando de principio a fin durante `dur_ms` (borde brillante); para varias subidas seguidas antes del `build` final |
 | `build` | `color`, `dur_ms` | Tensión: se encienden LEDs desde el centro de cada zona y el parpadeo se acelera hasta el final |
 
 Colores: nombre en español o inglés (`rojo`, `verde`, `azul`, `blanco`, `amarillo`, `naranja`,

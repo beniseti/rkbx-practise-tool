@@ -18,7 +18,7 @@ constexpr uint16_t ALL_ZONES = 0xFFFF;
 
 enum class Fx : uint8_t {
   None, Color, Off, Pulse, Breathe, Alternate, Chase, Wave, Twinkle,   // fondos
-  Flash, Strobe, Rainbow, Build, Unknown,                              // temporales
+  Flash, Strobe, Rainbow, Build, Prebuild, Unknown,                              // temporales
   Sync                                                                 // re-alinear el beat
 };
 

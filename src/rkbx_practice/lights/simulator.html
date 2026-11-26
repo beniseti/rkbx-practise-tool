@@ -169,6 +169,7 @@ function apply(cmd) {
       case "strobe": over({ fx, dur: dur || 1000, color: color([255,255,255]), hz: Number(cmd.hz || 12) }); break;
       case "rainbow": over({ fx, dur: dur || 4000, speed: Number(cmd.speed || 0.5) }); break;
       case "build": over({ fx, dur: dur || 8000, color: color([255,255,255]) }); break;
+      case "prebuild": over({ fx, dur: dur || 16000, color: color([0,80,255]) }); break;
       default: over({ fx: "unknown", dur: dur || 600, color: [160, 0, 255] });
     }
   });
@@ -269,6 +270,14 @@ function ledColor(st, now, i, n, z) {
     const t = (now - o.start) / 1000 * o.speed;
     const fade = Math.min(1, (1 - p) * 6);
     return mix(base, hsv(((z - 1) * n + i) / (nZones() * n) + t, 1, 1), fade);
+  }
+  if (o.fx === "prebuild") {                       // carga: las tiras se van llenando hasta el final
+    const edge = 0.06;
+    const dim = scale(base, 0.2);
+    if (x > p) return dim;
+    const lvl = 0.35 + 0.65 * p;
+    if (p - x < edge) return mix(scale(o.color, lvl), [255, 255, 255], 0.6 * (1 - (p - x) / edge));
+    return mix(dim, o.color, lvl);
   }
   if (o.fx === "build") {                          // tensión: sube el brillo y el parpadeo se acelera
     const hz = 1 + 15 * p * p;
@@ -380,7 +389,7 @@ fetch("/config").then(r => r.json()).then(cfg => {
         alternate: { color: "morado", color2: "azul", bpm: 128 }, chase: { color: "naranja", bpm: 128, beats: 1 },
         wave: { color: "azul", color2: "morado", bpm: 128, beats: 4 },
         twinkle: { color: "azul", color2: "morado", density: 0.15, bpm: 128 },
-        build: { color: "blanco", dur_ms: 8000 }, flash: { color: "blanco", dur_ms: 200 },
+        build: { color: "blanco", dur_ms: 8000 }, prebuild: { color: "azul", dur_ms: 8000 }, flash: { color: "blanco", dur_ms: 200 },
         strobe: { dur_ms: 1000, hz: 12 }, rainbow: { dur_ms: 4000 }, off: {} };
   const box = document.getElementById("tests");
   Object.entries(effects).forEach(([fx, params]) => {

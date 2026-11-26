@@ -130,7 +130,11 @@
         "bpm": "live",
         "beats": 1
       },
-      "off": {}
+      "off": {},
+      "prebuild": {
+        "color": "$secondary",
+        "dur_ms": 16000
+      }
     },
     "rules": {
       "intro": {
@@ -220,7 +224,7 @@
       "blackout": {
         "fx": "off",
         "params": {},
-        "beats": 1
+        "beats": 4
       },
       "drop_hit": {
         "fx": null,

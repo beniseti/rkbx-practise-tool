@@ -131,6 +131,7 @@ class LightsConfig:
         "pulse": {"color": "morado", "bpm": "live"},
         "breathe": {"color": "azul", "period_ms": 4000},
         "build": {"color": "blanco", "dur_ms": 8000},
+        "prebuild": {"color": "azul", "dur_ms": 16000},
         "flash": {"color": "blanco", "dur_ms": 200},
         "strobe": {"dur_ms": 1000, "hz": 12},
         "rainbow": {"dur_ms": 4000},

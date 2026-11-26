@@ -30,7 +30,7 @@ from pathlib import Path
 from .analysis import TrackAnalysis
 from .commands import LightCommand
 
-FORMAT_VERSION = 6   # 6: minidrops · 2: estructura · 3: apagón + drop en movimiento · 4: siempre en movimiento · 5: paleta por tema e intensidad de drops
+FORMAT_VERSION = 7   # 7: subidas encadenadas (prebuild) y apagón ≥ 4 beats · 6: minidrops · 2: estructura · 3: apagón + drop en movimiento · 4: siempre en movimiento · 5: paleta por tema e intensidad de drops
 
 
 @dataclass
@@ -97,10 +97,14 @@ DEFAULT_RULES: dict[str, object] = {
     "breakdown": {"fx": "twinkle", "params": {"color": "$secondary", "color2": "$primary", "density": 0.15,
                                               "bpm": "live"}},
     "buildup": {"fx": "build", "params": {"color": "blanco", "dur_ms": "until_next"}},
+    # Varias subidas seguidas (pedido del usuario: varios «build» seguidos no lucen): las primeras
+    # son un solo «prebuild» que va cargando los LEDs a lo largo de las tiras hasta la última,
+    # que hace el «build» final.
+    "prebuild": {"fx": "prebuild", "params": {"color": "$secondary", "dur_ms": "until_next"}},
     "pre_drop": {"fx": "strobe", "params": {"dur_ms": "until_next", "hz": 16}},
-    # Subida → drop (Up → Chorus), pedido por el usuario: apagón momentáneo (`beats` beats antes
-    # del drop) y en el drop se encienden con un efecto en movimiento.
-    "blackout": {"fx": "off", "params": {}, "beats": 1},
+    # Subida → drop (Up → Chorus), pedido por el usuario: apagón (`beats` beats antes del drop,
+    # como mínimo MIN_BLACKOUT_BEATS) y en el drop se encienden con un efecto en movimiento.
+    "blackout": {"fx": "off", "params": {}, "beats": 4},
     "drop_hit": {"fx": None, "params": {}},
     "drop_soft": [
         {"fx": "pulse", "params": {"color": "$primary", "bpm": "live"}},
@@ -125,6 +129,9 @@ DEFAULT_RULES: dict[str, object] = {
     ],
     "outro": {"fx": "wave", "params": {"color": "$primary", "color2": "$secondary", "bpm": "live", "beats": 8}},
 }
+
+
+MIN_BLACKOUT_BEATS = 4   # pedido del usuario: apagar la luz como mínimo 4 beats antes del drop
 
 
 def _copy_rule(v: dict) -> dict:
@@ -181,7 +188,8 @@ def generate_show(track_id: str, title: str, analysis: TrackAnalysis,
 
     - Al inicio de cada sección, el efecto de su papel.
     - En un drop: «drop_hit» en el primer beat y el efecto de «drop» en el segundo.
-    - En una subida que acaba en drop: «pre_drop» en el último compás.
+    - Varias subidas seguidas: un «prebuild» (carga los LEDs) hasta la última, que hace el «build».
+    - Subida que acaba en drop: «build» → «pre_drop» (un compás) → apagón (≥ 4 beats) → drop.
     """
     from .structure import ROLE_NAMES_ES
     r = effective_rules(rules)
@@ -208,6 +216,12 @@ def generate_show(track_id: str, title: str, analysis: TrackAnalysis,
                                   _resolve(rule.get("params", {}), ms, palette))
 
     sections = analysis.sections
+    # Subidas seguidas: la cadena empieza en la primera; las anteriores a la última son un prebuild.
+    chain_first: dict[int, int] = {}            # índice de sección → índice de la primera de su cadena
+    for k, sec in enumerate(sections):
+        if sec.role == "buildup":
+            prev = k - 1
+            chain_first[k] = chain_first[prev] if prev >= 0 and sections[prev].role == "buildup" else k
     for k, sec in enumerate(sections):
         nxt = sections[k + 1] if k + 1 < len(sections) else None
         until = sec.end
@@ -218,17 +232,36 @@ def generate_show(track_id: str, title: str, analysis: TrackAnalysis,
                 add(sec.start + 1, sec.name_es, key, until, occurrence=sec.occurrence)
             else:
                 add(sec.start, sec.name_es, key, until, occurrence=sec.occurrence)
+        elif sec.role == "buildup":
+            last = nxt is None or nxt.role != "buildup"
+            first = chain_first[k]
+            if not last:
+                if first == k:                   # un solo prebuild para todas menos la última
+                    end_k = k
+                    while end_k + 1 < len(sections) and sections[end_k + 1].role == "buildup":
+                        end_k += 1
+                    add(sec.start, f"{sec.name_es} · carga", "prebuild", sections[end_k].start)
+                continue
+            # Última subida de la cadena: build final → pre-drop → apagón (≥ 4 beats) → drop.
+            if nxt is not None and nxt.role == "drop":
+                black = pick_rule(r, "blackout")
+                gap = max(MIN_BLACKOUT_BEATS, int(black.get("beats", MIN_BLACKOUT_BEATS))) \
+                    if black.get("fx") else 0
+                dark = nxt.start - gap
+                pre = dark - 4                   # el compás antes del apagón
+                chain_start = sections[first].start
+                build_end = pre if pre > sec.start else (dark if dark > sec.start else nxt.start)
+                add(sec.start, sec.name_es, "buildup", build_end)
+                if sec.start < pre < dark:
+                    add(pre, "Pre-drop", "pre_drop", dark)
+                if gap and dark > chain_start:
+                    if dark <= sec.start:        # subida corta: el apagón manda
+                        events.pop(sec.start, None)
+                    add(max(dark, chain_start), "Apagón", "blackout", nxt.start)
+            else:
+                add(sec.start, sec.name_es, "buildup", until)
         else:
             add(sec.start, sec.name_es, sec.role, until)
-        if sec.role == "buildup" and nxt is not None and nxt.role == "drop":
-            black = pick_rule(r, "blackout")
-            gap = int(black.get("beats", 1)) if black.get("fx") else 0
-            dark = nxt.start - gap                       # apagón justo antes del drop
-            pre = nxt.start - 4                          # último compás antes del drop
-            if pre > sec.start and pre < dark:
-                add(pre, "Pre-drop", "pre_drop", dark)
-            if gap and dark > sec.start:
-                add(dark, "Apagón", "blackout", nxt.start)
     # Minidrops: apagón en el hueco y cambio de efecto al volver el bombo.
     for k, md in enumerate(getattr(analysis, "minidrops", []) or []):
         black = pick_rule(r, "mini_blackout")

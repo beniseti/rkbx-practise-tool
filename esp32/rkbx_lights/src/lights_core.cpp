@@ -89,7 +89,7 @@ Fx parseFx(const char* n) {
       {"color", Fx::Color},   {"off", Fx::Off},         {"pulse", Fx::Pulse},
       {"breathe", Fx::Breathe}, {"alternate", Fx::Alternate}, {"chase", Fx::Chase},
       {"wave", Fx::Wave},     {"twinkle", Fx::Twinkle}, {"flash", Fx::Flash},
-      {"strobe", Fx::Strobe}, {"rainbow", Fx::Rainbow}, {"build", Fx::Build},
+      {"strobe", Fx::Strobe}, {"rainbow", Fx::Rainbow}, {"build", Fx::Build}, {"prebuild", Fx::Prebuild},
       {"sync", Fx::Sync},
   };
   for (auto& e : table)
@@ -276,6 +276,7 @@ void Engine::apply(const Command& c, uint32_t now) {
       case Fx::Strobe: over(Fx::Strobe, 1000, RGB{255, 255, 255}); break;
       case Fx::Rainbow: over(Fx::Rainbow, 4000, RGB{255, 255, 255}); break;
       case Fx::Build: over(Fx::Build, 8000, RGB{255, 255, 255}); break;
+      case Fx::Prebuild: over(Fx::Prebuild, 16000, RGB{0, 80, 255}); break;
       case Fx::Unknown:
       default: over(Fx::Unknown, 600, RGB{160, 0, 255}); break;
     }
@@ -355,6 +356,14 @@ RGB Engine::ledColor(const Zone& z, uint32_t now, int zone, int i, int n, float 
       float fade = clamp01((1 - p) * 6);
       float hue = (float)k / (strips_ * pixels_) + t;
       return mix(base, hsv(hue, 1, 1), fade);
+    }
+    case Fx::Prebuild: {                                  // carga: la tira se llena hasta el final
+      const float edge = 0.06f;
+      RGB dim = scale(base, 0.2f);
+      if (x > p) return dim;
+      float lvl = 0.35f + 0.65f * p;
+      if (p - x < edge) return mix(scale(o.color, lvl), RGB{255, 255, 255}, 0.6f * (1 - (p - x) / edge));
+      return mix(dim, o.color, lvl);
     }
     case Fx::Build: {                                     // tensión: más brillo y parpadeo más rápido
       float hz = 1 + 15 * p * p;
