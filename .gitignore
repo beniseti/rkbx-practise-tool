@@ -11,3 +11,7 @@ history/*.json
 !history/.gitkeep
 tools/offset_detect/out/
 data/offsets/*.candidates.json
+
+# PlatformIO
+esp32/rkbx_lights/.pio/
+esp32/rkbx_lights/.vscode/
