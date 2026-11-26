@@ -31,8 +31,10 @@ ESP32 GPIO 27 ── 330 Ω ── DIN tira 3
 - **No conectes los 12 V al ESP32.** Aliméntalo con un conversor DC-DC (buck) de 12 V a 5 V al pin
   5V/VIN, o por USB mientras pruebas (con la masa unida a la de la fuente igualmente).
 - Los datos entran por el extremo **DIN** de la tira (flecha impresa en la tira).
-- Resistencia de 330 Ω en serie en cada línea de datos, cerca del ESP32. Si una tira parpadea o
-  no responde (el ESP32 da 3,3 V), pon un conversor de nivel 74AHCT125 alimentado a 5 V.
+- Conversor de nivel del usuario: módulo **IIC/I2C bidireccional** (4 canales): LV = 3,3 V (pin 3V3
+  del ESP32), HV = 5 V (regulador), GND común; GPIO 25/26/27 → LV1-3, HV1-3 → 330 Ω → DIN.
+  Es un conversor lento (MOSFET + resistencias de 10 kΩ): suele valer para WS2811 con cables
+  cortos; si alguna tira parpadea, prueba el GPIO directo a DIN o un 74AHCT125.
 - Condensador de 1000 µF (16 V o más) entre +12 V y GND en la entrada de las tiras.
 - En `include/config.h`: `PIXELS_PER_STRIP` (en WS2811 de 12 V, 1 píxel = 1 chip = 3 LEDs;
   70 cm a 60 LEDs/m ≈ 14 píxeles), `COLOR_ORDER` (comprueba con el barrido de arranque: tira 1

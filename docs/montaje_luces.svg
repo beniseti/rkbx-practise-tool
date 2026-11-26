@@ -35,8 +35,8 @@
 <circle cx="260" cy="280" r="5" fill="#f08c00"/>
 <text x="420" y="183" fill="#f08c00" font-weight="bold">+5 V (ajusta el regulador a 5 V antes de conectar)</text>
 <rect x="300" y="220" width="180" height="300" rx="8" fill="#ebfbee" stroke="#495057" stroke-width="2"/>
-<text x="390.0" y="250" text-anchor="middle" font-weight="bold" font-size="15">ESP32</text>
-<text x="390.0" y="268" text-anchor="middle" fill="#495057">ESP32-WROOM-32D</text>
+<text x="390.0" y="335" text-anchor="middle" font-weight="bold" font-size="15">ESP32</text>
+<text x="390.0" y="354" text-anchor="middle" fill="#495057">ESP32-WROOM-32D</text>
 <circle cx="300" cy="280" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
 <text x="308" y="284" text-anchor="start" font-size="12" font-weight="bold">5V / VIN</text>
 <polyline points="390,520 390,680" fill="none" stroke="#222" stroke-width="3" stroke-linejoin="round"/>
@@ -44,25 +44,21 @@
 <circle cx="390" cy="520" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
 <text x="398" y="514" text-anchor="start" font-size="12" font-weight="bold">GND</text>
 <rect x="580" y="220" width="150" height="300" rx="8" fill="#f3f0ff" stroke="#495057" stroke-width="2"/>
-<text x="655.0" y="258" text-anchor="middle" font-weight="bold" font-size="15">74AHCT125</text>
-<text x="655.0" y="276" text-anchor="middle" fill="#495057">conversor de nivel</text>
+<text x="655.0" y="335" text-anchor="middle" font-weight="bold" font-size="14">Conversor IIC/I2C</text>
+<text x="655.0" y="354" text-anchor="middle" fill="#495057" font-size="11">de nivel (3,3 V ↔ 5 V)</text>
 <circle cx="655" cy="220" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
-<text x="663" y="236" text-anchor="start" font-size="12" font-weight="bold">VCC 5V</text>
+<text x="663" y="236" text-anchor="start" font-size="12" font-weight="bold">HV (5 V)</text>
 <polyline points="620,520 620,680" fill="none" stroke="#222" stroke-width="3" stroke-linejoin="round"/>
 <circle cx="620" cy="680" r="5" fill="#222"/>
 <circle cx="620" cy="520" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
 <text x="614" y="514" text-anchor="end" font-size="12" font-weight="bold">GND</text>
-<polyline points="690,520 690,680" fill="none" stroke="#222" stroke-width="3" stroke-linejoin="round"/>
-<circle cx="690" cy="680" r="5" fill="#222"/>
-<circle cx="690" cy="520" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
-<text x="696" y="514" text-anchor="start" font-size="12" font-weight="bold">1OE 2OE 3OE</text>
 <polyline points="480,300 580,300" fill="none" stroke="#2b8a3e" stroke-width="3" stroke-linejoin="round"/>
 <circle cx="480" cy="300" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
 <text x="472" y="304" text-anchor="end" font-size="12" font-weight="bold">GPIO 25</text>
 <circle cx="580" cy="300" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
-<text x="588" y="304" text-anchor="start" font-size="12" font-weight="bold">1A</text>
+<text x="588" y="304" text-anchor="start" font-size="12" font-weight="bold">LV1</text>
 <circle cx="730" cy="300" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
-<text x="722" y="304" text-anchor="end" font-size="12" font-weight="bold">1Y</text>
+<text x="722" y="304" text-anchor="end" font-size="12" font-weight="bold">HV1</text>
 <polyline points="730,300 760,300" fill="none" stroke="#2b8a3e" stroke-width="3" stroke-linejoin="round"/>
 <rect x="760" y="291" width="40" height="18" fill="#fff" stroke="#2b8a3e" stroke-width="2.5"/>
 <text x="780" y="286" text-anchor="middle" font-size="11">330 Ω</text>
@@ -94,9 +90,9 @@
 <circle cx="480" cy="380" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
 <text x="472" y="384" text-anchor="end" font-size="12" font-weight="bold">GPIO 26</text>
 <circle cx="580" cy="380" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
-<text x="588" y="384" text-anchor="start" font-size="12" font-weight="bold">2A</text>
+<text x="588" y="384" text-anchor="start" font-size="12" font-weight="bold">LV2</text>
 <circle cx="730" cy="380" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
-<text x="722" y="384" text-anchor="end" font-size="12" font-weight="bold">2Y</text>
+<text x="722" y="384" text-anchor="end" font-size="12" font-weight="bold">HV2</text>
 <polyline points="730,380 760,380" fill="none" stroke="#1971c2" stroke-width="3" stroke-linejoin="round"/>
 <rect x="760" y="371" width="40" height="18" fill="#fff" stroke="#1971c2" stroke-width="2.5"/>
 <text x="780" y="366" text-anchor="middle" font-size="11">330 Ω</text>
@@ -128,9 +124,9 @@
 <circle cx="480" cy="460" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
 <text x="472" y="464" text-anchor="end" font-size="12" font-weight="bold">GPIO 27</text>
 <circle cx="580" cy="460" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
-<text x="588" y="464" text-anchor="start" font-size="12" font-weight="bold">3A</text>
+<text x="588" y="464" text-anchor="start" font-size="12" font-weight="bold">LV3</text>
 <circle cx="730" cy="460" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
-<text x="722" y="464" text-anchor="end" font-size="12" font-weight="bold">3Y</text>
+<text x="722" y="464" text-anchor="end" font-size="12" font-weight="bold">HV3</text>
 <polyline points="730,460 760,460" fill="none" stroke="#9c36b5" stroke-width="3" stroke-linejoin="round"/>
 <rect x="760" y="451" width="40" height="18" fill="#fff" stroke="#9c36b5" stroke-width="2.5"/>
 <text x="780" y="446" text-anchor="middle" font-size="11">330 Ω</text>
@@ -162,9 +158,15 @@
 <circle cx="840" cy="130" r="5" fill="#d62828"/>
 <text x="955" y="126" font-size="12">Condensador 1000 µF / 16 V+</text><text x="955" y="142" font-size="12">entre +12 V y GND (opcional)</text>
 <line x1="940" y1="130" x2="950" y2="130" stroke="#000" stroke-width="3"/><polyline points="950,130 950,170 875,170 875,270 860,270 860,315" fill="none" stroke="#222" stroke-width="3"/>
-<text x="20" y="722" font-size="13">⚠ Nunca conectes los 12 V al ESP32 ni al 74AHCT125: solo 5 V del regulador.</text>
-<text x="20" y="738" font-size="13">⚠ Todas las masas unidas: fuente, regulador, ESP32, 74AHCT125 y las 3 tiras.</text>
+<text x="20" y="722" font-size="13">⚠ Nunca conectes los 12 V al ESP32 ni al conversor: su lado HV va a 5 V (regulador) y su lado LV a 3,3 V (pin 3V3 del ESP32).</text>
+<text x="20" y="738" font-size="13">⚠ Todas las masas unidas: fuente, regulador, ESP32, conversor (sus dos GND) y las 3 tiras.</text>
 <text x="20" y="754" font-size="13">· Cada tira lleva su propio cable de +12 V y GND desde la fuente (no en cadena).</text>
 <text x="20" y="770" font-size="13">· Los datos entran por el extremo DIN (donde empieza la flecha impresa en la tira).</text>
-<text x="20" y="786" font-size="13">· 1OE, 2OE y 3OE del 74AHCT125 a GND (si quedan al aire, no pasa la señal).</text>
+<text x="20" y="786" font-size="13">· Se usan 3 de sus 4 canales (LV1-3 → HV1-3). Si alguna tira parpadea, prueba a conectar el GPIO directo a DIN.</text>
+<polyline points="480,240 580,240" fill="none" stroke="#e64980" stroke-width="3"/>
+<circle cx="480" cy="240" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="472" y="236" text-anchor="end" font-size="12" font-weight="bold">3V3</text>
+<circle cx="580" cy="240" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="588" y="236" text-anchor="start" font-size="12" font-weight="bold">LV (3,3 V)</text>
+<text x="530" y="232" text-anchor="middle" fill="#e64980" font-size="11" font-weight="bold">3,3 V</text>
+<circle cx="690" cy="520" r="4" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="684" y="514" text-anchor="end" font-size="12" font-weight="bold">GND</text>
+<polyline points="690,520 690,680" fill="none" stroke="#222" stroke-width="3"/><circle cx="690" cy="680" r="5" fill="#222"/>
 </svg>
