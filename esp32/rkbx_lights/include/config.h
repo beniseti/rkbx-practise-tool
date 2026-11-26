@@ -62,5 +62,9 @@
 #define WIFI_AP_IP 192, 168, 4, 1
 #define UDP_PORT 4210                      // lights.esp32_port
 
+// Monitor serie: 0 = no mostrar comandos · 1 = mostrar cada comando recibido (sin «sync») · 2 = todos.
+// Se puede cambiar en marcha escribiendo «v» + Intro en el monitor.
+#define LOG_COMMANDS 1
+
 // LED de la placa (parpadea al recibir comandos).
 #define STATUS_LED_PIN 2

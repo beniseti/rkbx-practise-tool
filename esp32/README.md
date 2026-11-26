@@ -83,5 +83,7 @@ gestor de librerías, crea un sketch `rkbx_lights` y copia dentro `src/main.cpp`
 Sin Wi-Fi también se puede probar por USB: en `pio device monitor` escribe un JSON por línea, por
 ejemplo `{"fx":"wave","color":"azul","color2":"morado","bpm":128}`.
 
-El monitor serie muestra cada 10 s: paquetes recibidos, inválidos, perdidos, fps y el último BPM
+El monitor serie muestra cada comando recibido con su hora (`[12.345] {"fx":"wave",…}`; los
+inválidos con `INVÁLIDO:`). Escribe `v` + Intro para cambiar entre nada / comandos / todo (con los
+`sync` de cada compás); el valor inicial es `LOG_COMMANDS` en `config.h`. Además, cada 10 s: paquetes recibidos, inválidos, perdidos, fps y el último BPM
 de `sync`. El LED de la placa parpadea con cada comando.

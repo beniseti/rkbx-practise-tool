@@ -30,6 +30,16 @@ static AsyncUDP udp;
 static QueueHandle_t commandQueue;
 
 static volatile uint32_t packetsReceived = 0, packetsInvalid = 0, packetsDropped = 0;
+
+// Registro de comandos en el monitor serie (se escribe desde loop(), nunca desde la tarea de red).
+// 0 = nada · 1 = comandos (sin «sync») · 2 = todo. Se cambia escribiendo «v» en el monitor.
+static volatile uint8_t logLevel = LOG_COMMANDS;
+struct LogLine {
+  uint32_t ms;
+  bool ok;
+  char text[120];
+};
+static QueueHandle_t logQueue;
 static uint32_t statusLedOffAt = 0;
 
 // ---------------------------------------------------------------------------
@@ -79,14 +89,35 @@ static bool parseCommand(const char* data, size_t len, rl::Command& c) {
   return c.zoneMask != 0;
 }
 
+static void logPacket(const char* data, size_t len, bool ok, const rl::Command& c) {
+  if (logLevel == 0 || !logQueue) return;
+  if (ok && c.fx == rl::Fx::Sync && logLevel < 2) return;
+  LogLine l;
+  l.ms = millis();
+  l.ok = ok;
+  size_t n = len < sizeof(l.text) - 1 ? len : sizeof(l.text) - 1;
+  memcpy(l.text, data, n);
+  l.text[n] = 0;
+  xQueueSend(logQueue, &l, 0);                // si la cola está llena se pierde la línea, no el comando
+}
+
 static void enqueue(const char* data, size_t len) {
   rl::Command c;
   ++packetsReceived;
-  if (!parseCommand(data, len, c)) {
+  bool ok = parseCommand(data, len, c);
+  logPacket(data, len, ok, c);
+  if (!ok) {
     ++packetsInvalid;
     return;
   }
   if (xQueueSend(commandQueue, &c, 0) != pdTRUE) ++packetsDropped;
+}
+
+static void printLog() {
+  LogLine l;
+  while (logQueue && xQueueReceive(logQueue, &l, 0) == pdTRUE)
+    Serial.printf("[%lu.%03lu] %s%s\n", (unsigned long)(l.ms / 1000), (unsigned long)(l.ms % 1000),
+                  l.ok ? "" : "INVÁLIDO: ", l.text);
 }
 
 // ---------------------------------------------------------------------------
@@ -161,10 +192,14 @@ static void readSerial() {
   while (Serial.available()) {
     char ch = (char)Serial.read();
     if (ch == '\n' || ch == '\r') {
-      if (used) {
+      if (used == 1 && (line[0] == 'v' || line[0] == 'V')) {
+        logLevel = (logLevel + 1) % 3;
+        Serial.printf("Registro de comandos: %s\n",
+                      logLevel == 0 ? "desactivado" : logLevel == 1 ? "comandos (sin sync)" : "todo (con sync)");
+      } else if (used) {
         enqueue(line, used);
-        used = 0;
       }
+      used = 0;
     } else if (used < sizeof(line) - 1) {
       line[used++] = ch;
     }
@@ -215,6 +250,7 @@ void setup() {
 
   engine.begin(STRIPS, SECTIONS_PER_STRIP, PIXELS_PER_STRIP);
   commandQueue = xQueueCreate(64, sizeof(rl::Command));
+  logQueue = xQueueCreate(32, sizeof(LogLine));
 
   bootAnimation();
   startNetwork();
@@ -228,6 +264,7 @@ void setup() {
   idle.hasColor2 = true;
   idle.density = 0.06f;
   engine.apply(idle, millis());
+  Serial.println("Escribe «v» + Intro para cambiar el registro de comandos (nada / comandos / todo)");
   Serial.printf("Listo: %d tiras × %d secciones · %d píxeles por tira\n", STRIPS, SECTIONS_PER_STRIP, PIXELS_PER_STRIP);
 }
 
@@ -238,6 +275,7 @@ void loop() {
   rl::Command c;
   while (xQueueReceive(commandQueue, &c, 0) == pdTRUE) applyCommand(c, now);
   readSerial();
+  printLog();
 
   if (statusLedOffAt && (int32_t)(now - statusLedOffAt) >= 0) {
     digitalWrite(STATUS_LED_PIN, LOW);
