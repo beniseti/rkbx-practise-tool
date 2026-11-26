@@ -60,6 +60,8 @@
     "format": "flac",
     "block_ms": 100,
     "peaks_per_s": 20,
+    "auto_stop_silence_s": 300,
+    "silence_threshold_db": -50,
     "review_http_port": 8766
   },
   "ui": {

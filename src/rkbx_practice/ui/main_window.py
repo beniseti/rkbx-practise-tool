@@ -552,6 +552,12 @@ class MainWindow(QMainWindow):
             if t_sent != getattr(self, "_last_light_shown", None):
                 self._last_light_shown = t_sent
                 self.statusBar().showMessage(f"Luces: {ev.label} → {ev.fx}", 3000)
+        if self.ctl.recorder.recording and self.ctl.audio_auto_stopped:
+            mins = self.cfg.audio.auto_stop_silence_s / 60
+            self._auto_stop_msg = (f"Grabación parada sola: {mins:g} min sin sonido "
+                                   "(cortada donde dejó de sonar)")
+            self.rec_button.setChecked(False)
+            self._toggle_recording(False)               # guarda la sesión (cortada)
         if self.ctl.recorder.recording and self._record_started is not None:
             c = self.ctl.recorder.counts()
             secs = int(time.monotonic() - self._record_started)
@@ -563,6 +569,9 @@ class MainWindow(QMainWindow):
                 a_txt = f"SIN AUDIO: {audio.error}"
             elif audio.level_db is None:
                 a_txt = "audio: esperando sonido…"
+            elif audio.silence_s >= 10:
+                left = max(0, self.cfg.audio.auto_stop_silence_s - audio.silence_s)
+                a_txt = f"audio: {audio.silence_s:.0f} s sin sonido (se para sola en {left:.0f} s)"
             else:
                 a_txt = f"audio {audio.level_db:.0f} dB" + (" (silencio)" if audio.level_db < -60 else "")
             self.rec_button.setToolTip(f"Temas {c.get('tracks', 0)} · transiciones "
@@ -587,8 +596,11 @@ class MainWindow(QMainWindow):
             path = self.ctl.stop_recording()
             self._record_started = None
             self.rec_button.setText("● Iniciar grabación")
+            msg = getattr(self, "_auto_stop_msg", None)
+            self._auto_stop_msg = None
             if path:
-                self.statusBar().showMessage(f"Sesión guardada en {path}", 10000)
+                self.statusBar().showMessage(f"{msg + ' · ' if msg else ''}Sesión guardada en {path}",
+                                             20000 if msg else 10000)
 
     def _toggle_compact(self) -> None:
         self._compact = not self._compact

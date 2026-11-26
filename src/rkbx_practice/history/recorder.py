@@ -69,7 +69,10 @@ class SessionRecorder:
             }
         return self.stem
 
-    def stop(self, pending_events: list[LiveEvent] | None = None, audio: dict | None = None) -> Path | None:
+    def stop(self, pending_events: list[LiveEvent] | None = None, audio: dict | None = None,
+             ended_at: datetime | None = None) -> Path | None:
+        """Guarda la sesión. Con `ended_at` (parada automática por silencio) la sesión acaba ahí y
+        se quitan los eventos posteriores, que ya no tienen audio."""
         if pending_events:
             self.handle(pending_events)
         with self._lock:
@@ -77,7 +80,9 @@ class SessionRecorder:
                 return None
             data, self._data = self._data, None
             stem, self.stem = self.stem, None
-        data["ended_at"] = _iso(datetime.now())
+        data["ended_at"] = _iso(ended_at or datetime.now())
+        if ended_at is not None:
+            _cut_after(data, _iso(ended_at))
         if audio is not None:
             data["audio"] = audio
         return self._save(data, stem)
@@ -161,6 +166,14 @@ class SessionRecorder:
         return path
 
 
+def _cut_after(data: dict, end_iso: str) -> None:
+    """Quita los eventos que empiezan después de `end_iso` (las horas ISO se comparan como texto)."""
+    data["tracks"] = [t for t in data["tracks"] if t["at"] <= end_iso]
+    data["transitions"] = [t for t in data["transitions"] if t["start"] <= end_iso]
+    data["fader_cuts"] = [c for c in data["fader_cuts"] if c["at"] <= end_iso]
+    data["bass_swaps"] = [b for b in data["bass_swaps"] if b["at"] <= end_iso]
+
+
 def list_sessions(history_dir: str | Path) -> list[Path]:
     return sorted(Path(history_dir).glob("session-*.json"), reverse=True)
 
@@ -181,6 +194,7 @@ def summarize(data: dict) -> str:
         if audio.get("file"):
             m, sec = divmod(int(audio.get("duration_s") or 0), 60)
             lines.insert(2, f"Audio: {audio['file']} ({m}:{sec:02d}, {audio.get('device') or '?'})"
+                         + (" · parada automática por silencio" if audio.get("auto_stopped") else "")
                          + (f" · aviso: {audio['error']}" if audio.get("error") else ""))
         else:
             lines.insert(2, f"Audio: no se grabó ({audio.get('error') or 'sin datos'})")

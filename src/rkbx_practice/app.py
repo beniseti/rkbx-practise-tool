@@ -138,9 +138,19 @@ class PracticeController:
 
     def stop_recording(self):
         pending = self.poller.flush_pipeline() if self.poller else []
-        audio_info = self.audio.stop() if self.audio is not None else None
+        audio_info, ended_at = None, None
+        if self.audio is not None:
+            audio_info = self.audio.stop()
+            if self.audio.auto_stopped and self.audio.ended_wall is not None:
+                from datetime import datetime
+                ended_at = datetime.fromtimestamp(self.audio.ended_wall)
         self.audio = None
-        return self.recorder.stop(pending, audio=audio_info)
+        return self.recorder.stop(pending, audio=audio_info, ended_at=ended_at)
+
+    @property
+    def audio_auto_stopped(self) -> bool:
+        """La grabación de audio se ha parado sola (silencio): hay que cerrar la sesión."""
+        return self.audio is not None and self.audio.auto_stopped
 
     # --- bucle en vivo ------------------------------------------------
     def start_live(self, listener: LiveListener) -> LivePoller:

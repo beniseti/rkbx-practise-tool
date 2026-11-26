@@ -197,3 +197,79 @@ def test_review_rejects_other_files(review, path):
     with pytest.raises(urllib.error.HTTPError) as e:
         _get(srv.url + path)
     assert e.value.code == 404
+
+
+class ScriptedSource:
+    """Bloques de 100 ms: 'S' = sonido, '.' = silencio. Avanza el reloj falso."""
+
+    name = "guion"
+
+    def __init__(self, clock, script, sr=1000):
+        self.clock, self.script, self.sr, self.i = clock, script, sr, 0
+
+    def read(self, frames):
+        if self.i >= len(self.script):
+            self.clock.stop_event.set()
+            ch = "."
+        else:
+            ch = self.script[self.i]
+        self.i += 1
+        self.clock.t += frames / self.sr
+        level = 0.5 if ch == "S" else 0.0
+        return np.full((frames, 2), level, dtype=np.float32)
+
+    def close(self):
+        pass
+
+
+def _scripted(script, auto_stop_s=1.0):
+    cfg = AudioConfig(sample_rate=1000, channels=2, block_ms=100, peaks_per_s=10,
+                      auto_stop_silence_s=auto_stop_s, silence_threshold_db=-50)
+    clock = FakeClock()
+    writer = FakeWriter()
+    rec = AudioRecorder(cfg, source_factory=lambda: ScriptedSource(clock, script),
+                        writer_factory=lambda *a: writer, clock=clock)
+    clock.stop_event = rec._stop
+    return rec, writer
+
+
+def test_auto_stop_after_silence_cuts_where_sound_stopped(tmp_path):
+    # 0,5 s de silencio inicial (se conserva), 1 s de sonido, 0,4 s de silencio (vuelve el sonido:
+    # se conserva), 0,3 s de sonido y luego silencio largo → para sola y descarta ese silencio.
+    rec, writer = _scripted("....." + "S" * 10 + "...." + "SSS" + "." * 40, auto_stop_s=1.0)
+    rec.start(tmp_path / "s.flac")
+    rec._thread.join(5)
+    info = rec.stop()
+    assert rec.auto_stopped and info["auto_stopped"]
+    assert rec.seconds == pytest.approx(0.5 + 1.0 + 0.4 + 0.3)
+    assert writer.frames == rec.frames
+    assert info["discarded_silence_s"] == pytest.approx(1.0)
+    assert rec.ended_wall == pytest.approx(rec.started_wall + 2.2)
+    last = np.concatenate(writer.blocks)[-300:]
+    assert np.abs(last).max() > 0.4                       # el archivo acaba con sonido
+
+
+def test_no_auto_stop_before_any_sound_and_manual_stop_keeps_tail(tmp_path):
+    rec, writer = _scripted("." * 30, auto_stop_s=1.0)      # 3 s sin sonar nunca: no se para
+    rec.start(tmp_path / "s.flac")
+    rec._thread.join(5)
+    info = rec.stop()
+    assert not rec.auto_stopped and rec.seconds == pytest.approx(3.0, abs=0.11)
+    rec, writer = _scripted("SSSSS" + "." * 5, auto_stop_s=1.0)  # parada a mano con 0,5 s de silencio
+    rec.start(tmp_path / "t.flac")
+    rec._thread.join(5)
+    rec.stop()
+    assert not rec.auto_stopped and rec.seconds == pytest.approx(1.0, abs=0.11)
+
+
+def test_session_cut_removes_events_after_end(tmp_path):
+    from rkbx_practice.events import TrackLoaded
+    r = SessionRecorder(tmp_path, None, SessionConfig())
+    r.start(None)
+    t1, t2 = datetime(2026, 11, 26, 21, 0, 0), datetime(2026, 11, 26, 21, 10, 0)
+    r.handle([TrackLoaded(at=t1, t=0.0, deck=1, track_id="a", track_path=None),
+              TrackLoaded(at=t2, t=600.0, deck=2, track_id="b", track_path=None)])
+    path = r.stop(audio={"file": None, "auto_stopped": True}, ended_at=datetime(2026, 11, 26, 21, 5))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert [t["id"] for t in data["tracks"]] == ["a"]
+    assert data["ended_at"].startswith("2026-11-26T21:05:00")

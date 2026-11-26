@@ -95,6 +95,10 @@ class AudioConfig:
     format: str = "flac"         # flac (sin pérdida, ~1/2 de wav), wav u ogg
     block_ms: int = 100
     peaks_per_s: int = 20        # resolución de la forma de onda que se guarda para revisar
+    # Parada automática (pedido del usuario): tras este tiempo seguido sin sonido se para la
+    # grabación y se corta desde donde dejó de sonar. 0 = desactivado.
+    auto_stop_silence_s: float = 300.0
+    silence_threshold_db: float = -50.0   # por debajo de este pico se considera silencio
     review_http_port: int = 8766  # página de revisión http://127.0.0.1:8766/
 
 

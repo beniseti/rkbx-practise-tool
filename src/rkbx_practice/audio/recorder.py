@@ -9,6 +9,12 @@
 - Mientras graba calcula la **forma de onda** resumida (`peaks_per_s` picos por segundo, 1 byte
   cada uno) y la guarda en `<sesión>.peaks` para que la página de revisión la dibuje sin
   descodificar todo el audio.
+- **Parada automática** (pedido del usuario): una vez ha sonado algo, los bloques en silencio
+  (pico < `silence_threshold_db`) no se escriben enseguida, se guardan aparte; si vuelve el sonido
+  se escriben (el audio sigue alineado), y si el silencio dura `auto_stop_silence_s` (5 min) la
+  grabación se para sola y ese silencio se descarta: el archivo acaba donde dejó de sonar.
+  Si no ha sonado nada desde el principio no se para (probablemente el dispositivo no recibe
+  audio y lo indica la ventana).
 - Nunca para la app: cualquier error queda en `error` y la sesión se guarda sin audio.
 """
 
@@ -47,6 +53,11 @@ class AudioRecorder:
         self.frames = 0
         self.padded_frames = 0
         self.level_db: float | None = None
+        self.heard = False             # ya ha sonado algo
+        self.auto_stopped = False      # se paró sola tras el silencio
+        self.discarded_frames = 0      # silencio final descartado
+        self._pending: list = []       # silencio aún sin escribir (int16)
+        self._pending_frames = 0
         self._peaks = bytearray()
         self._peak_acc = 0.0
         self._peak_n = 0
@@ -59,6 +70,16 @@ class AudioRecorder:
     @property
     def seconds(self) -> float:
         return self.frames / self.cfg.sample_rate
+
+    @property
+    def silence_s(self) -> float:
+        """Segundos seguidos de silencio en curso (tras haber sonado algo)."""
+        return self._pending_frames / self.cfg.sample_rate
+
+    @property
+    def ended_wall(self) -> float | None:
+        """Hora real del final de lo grabado (donde dejó de sonar, si se paró sola)."""
+        return self.started_wall + self.seconds if self.started_wall is not None else None
 
     def start(self, path: Path, wait_s: float = 3.0) -> bool:
         """Empieza a grabar en `path`. Espera a que el dispositivo se abra (o falle)."""
@@ -92,6 +113,8 @@ class AudioRecorder:
             "device": self.device_name,
             "loopback": self.cfg.loopback,
             "padded_s": round(self.padded_frames / self.cfg.sample_rate, 3),
+            "auto_stopped": self.auto_stopped,
+            "discarded_silence_s": round(self.discarded_frames / self.cfg.sample_rate, 3),
             "peaks_file": peaks_file,
             "peaks_per_s": self.cfg.peaks_per_s,
             "error": self.error,
@@ -117,6 +140,11 @@ class AudioRecorder:
             finally:
                 self._ready.set()
             self._loop(source, writer)
+            if self.auto_stopped:
+                self.discarded_frames = self._pending_frames
+            else:
+                self._flush_pending(writer)        # parada a mano: se conserva el final
+            self._pending, self._pending_frames = [], 0
         except Exception as exc:  # noqa: BLE001
             self.error = f"la grabación de audio se cortó: {exc}"
             log.exception("Grabación de audio cortada")
@@ -146,20 +174,45 @@ class AudioRecorder:
                     else data[:, :self.cfg.channels]
             if self.started_wall is None:
                 self.started_wall = now - len(data) / sr
-            behind = (now - self.started_wall) * sr - (self.frames + len(data))
+            behind = (now - self.started_wall) * sr - (self.frames + self._pending_frames + len(data))
             if behind > MAX_DRIFT_S * sr:
                 gap = np.zeros((int(behind), self.cfg.channels), dtype=np.float32)
-                self._write(writer, gap)
                 self.padded_frames += len(gap)
-            self._write(writer, data)
+                self._feed(writer, gap)
+            self._feed(writer, data)
+
+    def _feed(self, writer, block) -> None:
+        """Escribe el bloque, o lo guarda aparte si es silencio tras haber sonado algo."""
+        import numpy as np
+        peak = float(np.abs(block).max()) if len(block) else 0.0
+        self.level_db = 20 * math.log10(peak) if peak > 1e-5 else -100.0
+        loud = self.level_db >= self.cfg.silence_threshold_db
+        if loud:
+            self._flush_pending(writer)
+            self._write(writer, block)
+            self.heard = True
+            return
+        if not self.heard or self.cfg.auto_stop_silence_s <= 0:
+            self._write(writer, block)
+            return
+        self._pending.append(np.clip(block * 32767, -32768, 32767).astype(np.int16))
+        self._pending_frames += len(block)
+        if self._pending_frames >= self.cfg.auto_stop_silence_s * self.cfg.sample_rate:
+            self.auto_stopped = True
+            log.info("Grabación parada: %.0f s sin sonido", self.silence_s)
+            self._stop.set()
+
+    def _flush_pending(self, writer) -> None:
+        import numpy as np
+        for b in self._pending:
+            self._write(writer, b.astype(np.float32) / 32767)
+        self._pending, self._pending_frames = [], 0
 
     def _write(self, writer, block) -> None:
         import numpy as np
         writer.write(block)
         self.frames += len(block)
         mono = np.abs(block).max(axis=1)
-        peak = float(mono.max()) if len(mono) else 0.0
-        self.level_db = 20 * math.log10(peak) if peak > 1e-5 else -100.0
         per = max(1, self.cfg.sample_rate // max(1, self.cfg.peaks_per_s))
         i = 0
         while i < len(mono):

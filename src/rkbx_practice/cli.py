@@ -168,6 +168,10 @@ def cmd_live(cfg, args) -> int:
     try:
         while True:
             time.sleep(0.25)
+            if ctl.recorder.recording and ctl.audio_auto_stopped:
+                path = ctl.stop_recording()
+                _out(f"\nGrabación parada sola ({cfg.audio.auto_stop_silence_s / 60:g} min sin sonido): "
+                     f"sesión guardada en {path}")
             evs, state["events"] = state["events"], []
             if evs:
                 ctl.apply_events(evs)
