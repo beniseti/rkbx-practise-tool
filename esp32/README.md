@@ -14,17 +14,28 @@ Programa para un **ESP32 (ESP32-WROOM-32D, «ESP32D»)** que recibe los comandos
 La lógica de los efectos (`src/lights_core.cpp`) no depende de Arduino y se prueba en el PC:
 `tests/test_esp32_core.py` la compila con `g++` y ejecuta `test_host/test_core.cpp`.
 
-## Montaje
+## Montaje (WS2811 de 12 V, fuente de 12 V / 150 W)
 
-- Tira 1 → GPIO **25**, tira 2 → GPIO **26**, tira 3 → GPIO **27** (cámbialo en `include/config.h`).
-- **Masa común** entre la fuente de los LEDs y el ESP32. Alimenta las tiras desde la fuente, no
-  desde el USB del ESP32.
-- Recomendado: resistencia de 330 Ω en serie en cada línea de datos y un condensador de
-  1000 µF entre +5 V y masa en la entrada de las tiras. Con tiras de 5 V, un conversor de nivel
-  (p. ej. 74AHCT125) para los datos si parpadean (el ESP32 da 3,3 V).
-- `LEDS_PER_SECTION` (por defecto 20), tipo de LED (`WS2812B`, orden `GRB`), brillo y límite de
-  consumo (`POWER_MAX_MILLIAMPS`) en `include/config.h`. Debe coincidir con `lights.layout` de
-  `config/config.json` de la app.
+```
+Fuente 12 V ──┬──────────── +12 V tira 1, tira 2, tira 3 (cada tira con su cable desde la fuente)
+              ├─ conversor DC-DC 12 V → 5 V ── pin 5V (VIN) del ESP32
+              └─ GND ────── GND de las 3 tiras y GND del ESP32  (MASA COMÚN, imprescindible)
+
+ESP32 GPIO 25 ── 330 Ω ── DIN tira 1
+ESP32 GPIO 26 ── 330 Ω ── DIN tira 2
+ESP32 GPIO 27 ── 330 Ω ── DIN tira 3
+```
+
+- **No conectes los 12 V al ESP32.** Aliméntalo con un conversor DC-DC (buck) de 12 V a 5 V al pin
+  5V/VIN, o por USB mientras pruebas (con la masa unida a la de la fuente igualmente).
+- Los datos entran por el extremo **DIN** de la tira (flecha impresa en la tira).
+- Resistencia de 330 Ω en serie en cada línea de datos, cerca del ESP32. Si una tira parpadea o
+  no responde (el ESP32 da 3,3 V), pon un conversor de nivel 74AHCT125 alimentado a 5 V.
+- Condensador de 1000 µF (16 V o más) entre +12 V y GND en la entrada de las tiras.
+- En `include/config.h`: `PIXELS_PER_STRIP` (en WS2811 de 12 V, 1 píxel = 1 chip = 3 LEDs;
+  70 cm a 60 LEDs/m ≈ 14 píxeles), `COLOR_ORDER` (comprueba con el barrido de arranque: tira 1
+  roja, 2 verde, 3 azul), brillo y pines. Las 3 secciones se reparten los píxeles (14 → 4 + 5 + 5).
+  `lights.layout.leds_per_section` de `config/config.json` solo afecta al dibujo del simulador.
 
 ## Compilar y subir (PlatformIO)
 
@@ -48,8 +59,8 @@ gestor de librerías, crea un sketch `rkbx_lights` y copia dentro `src/main.cpp`
 
 ## Uso
 
-1. Al arrancar hace un barrido (tira 1 roja, 2 verde, 3 azul) para comprobar el cableado y queda
-   en reposo con destellos suaves.
+1. Al arrancar hace un barrido (tira 1 roja, 2 verde, 3 azul) para comprobar el cableado y el orden
+   de color, y queda en reposo con destellos suaves.
 2. Red (en este orden):
    - **Wi-Fi de casa**: copia `include/secrets.example.h` como `include/secrets.h` y pon tu
      red y clave (ese archivo no se sube a GitHub). Al arrancar intenta conectarse durante 15 s;

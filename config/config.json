@@ -286,7 +286,7 @@
     "layout": {
       "strips": 3,
       "sections_per_strip": 3,
-      "leds_per_section": 20
+      "leds_per_section": 5
     },
     "fallback": {
       "fx": "wave",

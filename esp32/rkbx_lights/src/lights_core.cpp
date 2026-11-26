@@ -172,10 +172,10 @@ uint16_t zonesFromList(const int* list, int n, int strips, int sections) {
 }
 
 // ---------------------------------------------------------------------------
-void Engine::begin(int strips, int sections, int ledsPerSection) {
+void Engine::begin(int strips, int sections, int pixelsPerStrip) {
   strips_ = strips < 1 ? 1 : (strips > MAX_STRIPS ? MAX_STRIPS : strips);
   sections_ = sections < 1 ? 1 : (sections > MAX_SECTIONS ? MAX_SECTIONS : sections);
-  leds_ = ledsPerSection < 1 ? 1 : ledsPerSection;
+  pixels_ = pixelsPerStrip < 1 ? 1 : pixelsPerStrip;
   for (auto& z : zones_) z = Zone();
 }
 
@@ -353,7 +353,7 @@ RGB Engine::ledColor(const Zone& z, uint32_t now, int zone, int i, int n, float 
     case Fx::Rainbow: {
       float t = el / 1000.0f * o.speed;
       float fade = clamp01((1 - p) * 6);
-      float hue = (float)(zone * n + i) / (zoneCount() * n) + t;
+      float hue = (float)k / (strips_ * pixels_) + t;
       return mix(base, hsv(hue, 1, 1), fade);
     }
     case Fx::Build: {                                     // tensión: más brillo y parpadeo más rápido
@@ -367,18 +367,21 @@ RGB Engine::ledColor(const Zone& z, uint32_t now, int zone, int i, int n, float 
   }
 }
 
+int Engine::sectionStart(int c) const { return c * pixels_ / sections_; }
+
 void Engine::render(uint32_t now, RGB* const* out) const {
-  int n = leds_;
+  // Las secciones se reparten los píxeles de la tira lo más igual posible (14 → 4, 5, 5).
   for (int s = 0; s < strips_; ++s) {
     RGB* strip = out[s];
     if (!strip) continue;
     for (int c = 0; c < sections_; ++c) {
       int zone = s * sections_ + c;
       const Zone& z = zones_[zone];
+      int a = sectionStart(c), n = sectionStart(c + 1) - a;
       for (int i = 0; i < n; ++i) {
-        float x = (c * n + i + 0.5f) / (float)(sections_ * n);   // posición a lo largo de la tira
-        uint32_t k = (uint32_t)(zone * n + i);
-        strip[c * n + i] = ledColor(z, now, zone, i, n, x, s, k);
+        float x = (a + i + 0.5f) / (float)pixels_;           // posición a lo largo de la tira
+        uint32_t k = (uint32_t)(s * pixels_ + a + i);
+        strip[a + i] = ledColor(z, now, zone, i, n, x, s, k);
       }
     }
   }

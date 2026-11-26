@@ -39,7 +39,7 @@ int main() {
 
   // --- motor
   Engine e;
-  e.begin(3, 3, 10);
+  e.begin(3, 3, 30);                        // 30 píxeles por tira = 3 secciones de 10
   RGB s0[30], s1[30], s2[30];
   RGB* out[3] = {s0, s1, s2};
 
@@ -165,6 +165,20 @@ int main() {
   e.apply(un, 80000);
   e.render(80100, out);
   CHECK(e.commandsApplied() > 10);
+
+  // --- tiras con píxeles que no se reparten exactos (WS2811 12 V, 70 cm ≈ 14 píxeles): 4 + 5 + 5
+  Engine u;
+  u.begin(3, 3, 14);
+  RGB u0[14], u1[14], u2[14];
+  RGB* uout[3] = {u0, u1, u2};
+  Command oc;
+  oc.fx = Fx::Color;
+  oc.hasColor = parseColor("azul", oc.color);
+  oc.zoneMask = parseZones("odd", 3, 3);
+  u.apply(oc, 1000);
+  u.render(1200, uout);
+  CHECK(u0[3].b == 255 && u0[4].b == 0 && u0[8].b == 0 && u0[9].b == 255 && u0[13].b == 255);
+  CHECK(u1[0].b == 0 && u1[4].b == 255 && u1[9].b == 0);   // tira 2: zonas 4 (no), 5 (sí), 6 (no)
 
   if (failures) {
     printf("%d fallos\n", failures);

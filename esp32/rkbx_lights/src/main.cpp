@@ -21,7 +21,7 @@
 static_assert(sizeof(CRGB) == sizeof(rl::RGB), "CRGB y rl::RGB deben tener la misma forma (r, g, b)");
 static_assert(STRIPS >= 1 && STRIPS <= 4, "STRIPS entre 1 y 4");
 
-constexpr int LEDS_PER_STRIP = SECTIONS_PER_STRIP * LEDS_PER_SECTION;
+constexpr int LEDS_PER_STRIP = PIXELS_PER_STRIP;
 
 static CRGB leds[STRIPS][LEDS_PER_STRIP];
 static rl::RGB* ledPtrs[STRIPS];
@@ -187,7 +187,7 @@ static void bootAnimation() {
     for (int i = 0; i < LEDS_PER_STRIP; ++i) {
       leds[s][i] = colors[s];
       FastLED.show();
-      delay(3);
+      delay(40);                             // pocos píxeles: barrido visible
     }
   }
   delay(300);
@@ -213,7 +213,7 @@ void setup() {
   FastLED.setDither(DISABLE_DITHER);          // sin parpadeo de tramado a alta tasa de refresco
   for (int s = 0; s < STRIPS; ++s) ledPtrs[s] = reinterpret_cast<rl::RGB*>(leds[s]);
 
-  engine.begin(STRIPS, SECTIONS_PER_STRIP, LEDS_PER_SECTION);
+  engine.begin(STRIPS, SECTIONS_PER_STRIP, PIXELS_PER_STRIP);
   commandQueue = xQueueCreate(64, sizeof(rl::Command));
 
   bootAnimation();
@@ -228,7 +228,7 @@ void setup() {
   idle.hasColor2 = true;
   idle.density = 0.06f;
   engine.apply(idle, millis());
-  Serial.printf("Listo: %d tiras × %d secciones × %d LEDs\n", STRIPS, SECTIONS_PER_STRIP, LEDS_PER_SECTION);
+  Serial.printf("Listo: %d tiras × %d secciones · %d píxeles por tira\n", STRIPS, SECTIONS_PER_STRIP, PIXELS_PER_STRIP);
 }
 
 void loop() {

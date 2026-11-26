@@ -49,9 +49,10 @@ uint16_t zonesFromList(const int* list, int n, int strips, int sections);
 
 class Engine {
  public:
-  void begin(int strips, int sections, int ledsPerSection);
+  // pixelsPerStrip: píxeles direccionables de cada tira (en WS2811 de 12 V, 1 píxel = 3 LEDs).
+  void begin(int strips, int sections, int pixelsPerStrip);
   void apply(const Command& c, uint32_t nowMs);
-  // out[s] = LEDs de la tira s (secciones seguidas: sections × ledsPerSection).
+  // out[s] = píxeles de la tira s (pixelsPerStrip, secciones seguidas).
   void render(uint32_t nowMs, RGB* const* out) const;
 
   int zoneCount() const { return strips_ * sections_; }
@@ -89,7 +90,8 @@ class Engine {
   RGB ledColor(const Zone& z, uint32_t now, int zone, int i, int n, float x, int strip, uint32_t k) const;
   void applySync(const Command& c, uint32_t now);
 
-  int strips_ = 3, sections_ = 3, leds_ = 20;
+  int sectionStart(int section) const;
+  int strips_ = 3, sections_ = 3, pixels_ = 60;
   Zone zones_[MAX_ZONES];
   float lastSyncBpm_ = 0;
   uint32_t applied_ = 0;
