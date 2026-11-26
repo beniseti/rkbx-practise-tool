@@ -30,7 +30,7 @@ from pathlib import Path
 from .analysis import TrackAnalysis
 from .commands import LightCommand
 
-FORMAT_VERSION = 7   # 7: subidas encadenadas (prebuild) y apagón ≥ 4 beats · 6: minidrops · 2: estructura · 3: apagón + drop en movimiento · 4: siempre en movimiento · 5: paleta por tema e intensidad de drops
+FORMAT_VERSION = 8   # 8: apagón de 3 beats · 7: subidas encadenadas (prebuild) · 6: minidrops · 2: estructura · 3: apagón + drop en movimiento · 4: siempre en movimiento · 5: paleta por tema e intensidad de drops
 
 
 @dataclass
@@ -102,9 +102,9 @@ DEFAULT_RULES: dict[str, object] = {
     # que hace el «build» final.
     "prebuild": {"fx": "prebuild", "params": {"color": "$secondary", "dur_ms": "until_next"}},
     "pre_drop": {"fx": "strobe", "params": {"dur_ms": "until_next", "hz": 16}},
-    # Subida → drop (Up → Chorus), pedido por el usuario: apagón (`beats` beats antes del drop,
-    # como mínimo MIN_BLACKOUT_BEATS) y en el drop se encienden con un efecto en movimiento.
-    "blackout": {"fx": "off", "params": {}, "beats": 4},
+    # Subida → drop (Up → Chorus), pedido por el usuario: apagón (`beats` beats antes del drop;
+    # el usuario va a probar 2 o 3) y en el drop se encienden con un efecto en movimiento.
+    "blackout": {"fx": "off", "params": {}, "beats": 3},
     "drop_hit": {"fx": None, "params": {}},
     "drop_soft": [
         {"fx": "pulse", "params": {"color": "$primary", "bpm": "live"}},
@@ -131,7 +131,7 @@ DEFAULT_RULES: dict[str, object] = {
 }
 
 
-MIN_BLACKOUT_BEATS = 4   # pedido del usuario: apagar la luz como mínimo 4 beats antes del drop
+MIN_BLACKOUT_BEATS = 1   # el usuario prueba 2-3 beats (`lights.rules.blackout.beats`, por defecto 3)
 
 
 def _copy_rule(v: dict) -> dict:
@@ -189,7 +189,7 @@ def generate_show(track_id: str, title: str, analysis: TrackAnalysis,
     - Al inicio de cada sección, el efecto de su papel.
     - En un drop: «drop_hit» en el primer beat y el efecto de «drop» en el segundo.
     - Varias subidas seguidas: un «prebuild» (carga los LEDs) hasta la última, que hace el «build».
-    - Subida que acaba en drop: «build» → «pre_drop» (un compás) → apagón (≥ 4 beats) → drop.
+    - Subida que acaba en drop: «build» → «pre_drop» (un compás) → apagón (3 beats) → drop.
     """
     from .structure import ROLE_NAMES_ES
     r = effective_rules(rules)
@@ -242,7 +242,7 @@ def generate_show(track_id: str, title: str, analysis: TrackAnalysis,
                         end_k += 1
                     add(sec.start, f"{sec.name_es} · carga", "prebuild", sections[end_k].start)
                 continue
-            # Última subida de la cadena: build final → pre-drop → apagón (≥ 4 beats) → drop.
+            # Última subida de la cadena: build final → pre-drop → apagón (`beats`) → drop.
             if nxt is not None and nxt.role == "drop":
                 black = pick_rule(r, "blackout")
                 gap = max(MIN_BLACKOUT_BEATS, int(black.get("beats", MIN_BLACKOUT_BEATS))) \

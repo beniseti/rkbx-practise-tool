@@ -224,7 +224,7 @@
       "blackout": {
         "fx": "off",
         "params": {},
-        "beats": 4
+        "beats": 3
       },
       "drop_hit": {
         "fx": null,
