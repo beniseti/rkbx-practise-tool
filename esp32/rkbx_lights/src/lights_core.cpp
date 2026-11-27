@@ -435,7 +435,10 @@ RGB Engine::ledColor(const Zone& z, uint32_t now, int zone, int i, int n, float 
     case Fx::Identify: {                                  // cada zona con su color; 1.er píxel blanco
       if (i == 0) return RGB{255, 255, 255};
       bool on = (el / 400) % 2 == 0;
-      return on ? hsv((float)zone / (zones_n_ > 0 ? zones_n_ : 1), 1, 1) : scale(base, 0.1f);
+      // Mismos colores que las partes en la ventana «Mis tiras» de la app.
+      static const RGB kParts[8] = {{255, 92, 92},  {255, 169, 77}, {255, 212, 59}, {105, 219, 124},
+                                    {56, 217, 169}, {77, 171, 247}, {116, 143, 252}, {218, 119, 242}};
+      return on ? kParts[zone % 8] : scale(base, 0.1f);
     }
     default: return mix(base, o.color, sinf(p * PI_F));
   }

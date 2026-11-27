@@ -38,7 +38,7 @@ ESP32 GPIO 27 ── 330 Ω ── DIN tira 3
 - Condensador de 1000 µF (16 V o más) entre +12 V y GND en la entrada de las tiras.
 - **Montaje sin reprogramar:** cuántas tiras (1-4, canales en GPIO 25, 26, 27 y 14), cuántos
   píxeles (1-300; en WS2811 de 12 V, 1 píxel = 1 chip = 3 LEDs; 70 cm a 60 LEDs/m ≈ 14) y cuántos
-  segmentos (1-8) tiene cada una se cambia en la app (**Montaje…**). El ESP32 lo guarda en su
+  segmentos (1-8) tiene cada una se cambia en la app (**Mis tiras…**). El ESP32 lo guarda en su
   memoria y lo recuerda al reiniciar. Los valores de fábrica (`DEFAULT_STRIPS`, `DEFAULT_PIXELS`,
   `DEFAULT_SEGMENTS`) están en `include/config.h`, junto con `COLOR_ORDER` (comprueba con el
   barrido de arranque: tira 1 roja, 2 verde, 3 azul), brillo y pines.

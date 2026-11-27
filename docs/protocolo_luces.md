@@ -11,7 +11,7 @@ Por defecto al puerto 4210 de `rkbx-luces.local` (ESP32 en la Wi-Fi de casa, mDN
 
 ## Montaje y zonas
 
-El montaje se cambia sin reprogramar (ventana **Montaje…** de la app, `lights.layout` en
+El montaje se cambia sin reprogramar (ventana **Mis tiras…** de la app, `lights.layout` en
 `config/config.json`): hasta **4 tiras** (canales: GPIO 25, 26, 27 y 14), cada una con sus
 **píxeles** (hasta 300) y **segmentos** (hasta 8; como mucho 32 zonas en total). Cada segmento es
 una **zona**; se numeran tira a tira. Ejemplo con 3 tiras × 3 segmentos:

@@ -117,7 +117,7 @@ entró el tema nuevo.
 
 ## Luces
 
-**Montaje…** (en la ventana): cuántas tiras (hasta 4), cuántos píxeles y cuántos segmentos (zonas)
+**Mis tiras…** (en la ventana): cuántas tiras (hasta 4), cuántos píxeles y cuántos segmentos (zonas)
 tiene cada una. Se guarda en `config/config.json` y se envía al ESP32, que lo recuerda; no hace
 falta reprogramarlo. **Identificar zonas** enciende cada zona de un color para ver su número.
 

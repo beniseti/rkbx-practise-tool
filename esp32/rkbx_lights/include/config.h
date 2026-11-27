@@ -3,7 +3,7 @@
 
 // ---- Tiras ----
 // Hasta 4 CANALES (un pin de datos cada uno). El montaje (cuántas tiras, cuántos píxeles y
-// segmentos tiene cada una) se cambia desde la app (botón «Montaje…»), sin reprogramar: el ESP32
+// segmentos tiene cada una) se cambia desde la app (botón «Mis tiras…»), sin reprogramar: el ESP32
 // lo guarda en su memoria y lo recuerda al reiniciar. Estos son solo los valores de fábrica.
 // En WS2811 de 12 V cada chip controla un grupo de 3 LEDs = 1 PÍXEL (se corta cada 3 LEDs).
 //   60 LEDs/m → 20 píxeles/m → 70 cm ≈ 14 · 30 LEDs/m → 10 píxeles/m → 70 cm = 7.

@@ -295,7 +295,8 @@ function ledColor(st, now, i, z) {
   }
   if (o.fx === "identify") {                       // cada zona con su color; el 1.er píxel en blanco
     if (i === 0) return [255, 255, 255];
-    return Math.floor((now - o.start) / 400) % 2 === 0 ? hsv((z - 1) / Math.max(1, nZones()), 1, 1) : scale(base, 0.1);
+    const parts = [[255,92,92],[255,169,77],[255,212,59],[105,219,124],[56,217,169],[77,171,247],[116,143,252],[218,119,242]];
+    return Math.floor((now - o.start) / 400) % 2 === 0 ? parts[(z - 1) % 8] : scale(base, 0.1);
   }
   if (o.fx === "prebuild") {                       // carga: las tiras se van llenando hasta el final
     const edge = 0.06;
