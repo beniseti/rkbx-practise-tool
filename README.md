@@ -41,6 +41,12 @@ python -m rkbx_practice ui
    y **Histórico** para revisarla (transiciones, fader cuts a tiempo, bass swaps).
    **🎧 Escuchar en el navegador** abre la página de revisión.
 
+## Ajustes propios
+
+Lo que cambias desde la ventana (latencia, tiras, idioma, tema…) se guarda en
+`config/config.local.json`, que no se sube a git: `git pull` nunca choca con tus ajustes. Para
+cambiar algo a mano, ponlo también ahí (solo las claves que quieras cambiar).
+
 ## Comandos
 
 ```powershell

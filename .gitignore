@@ -18,3 +18,6 @@ esp32/rkbx_lights/.vscode/
 
 # Wi-Fi de casa del ESP32 (no subir la clave)
 esp32/rkbx_lights/include/secrets.h
+
+# Ajustes propios del usuario (los guarda la app; no se suben)
+config/config.local.json

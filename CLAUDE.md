@@ -165,6 +165,8 @@ Claves añadidas durante la implementación:
 - `ui.always_on_top`, `ui.start_compact`, `ui.theme` (`material` por defecto, `rekordbox` o `system`), `ui.language` (`es`/`en`), `ui.module` (`all`/`practice`/`lights`), `ui.light_view` (panel lateral de luces).
 - `audio.*`: `enabled`, `device` (parte del nombre; `null` = salida predeterminada), `loopback` (salida o entrada), `sample_rate`, `channels`, `format` (`flac`/`wav`/`ogg`), `block_ms`, `peaks_per_s`, `auto_stop_silence_s` (300), `silence_threshold_db` (−50), `review_http_port` (8766).
 
+**Ajustes propios (`config/config.local.json`, fuera de git):** lo que se cambia desde la ventana (latencia, tiras, idioma, tema, panel de luces…) se guarda ahí con `config.save_value`, y `load_config` lo mezcla encima de `config.json`. Motivo (visto en real): la app escribía en `config.json` y el `git pull` del usuario chocaba con sus cambios. `python -m rkbx_practice config from-stash` pasa a `config.local.json` lo que el usuario tenía cambiado en un `git stash` (diferencias respecto a la versión de la que partía).
+
 Los valores de umbral son puntos de partida; se ajustarán probando con el usuario.
 
 ## 6. Biblioteca (master.db + ANLZ)

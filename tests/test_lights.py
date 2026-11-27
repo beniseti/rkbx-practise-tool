@@ -523,6 +523,19 @@ def test_save_value_keeps_rest_of_config(tmp_path):
     cfg = load_config(p)
     assert cfg.lights.latency_compensation_ms == 85 and cfg.lights.esp32_port == 4210
     assert cfg.rekordbox.decks == 2 and cfg.source_path == p
+    # se guarda aparte (config.local.json): config.json queda como en git y «git pull» no choca
+    assert "latency_compensation_ms" not in p.read_text()
+    assert json.loads((p.parent / "config.local.json").read_text())["lights"]["latency_compensation_ms"] == 85
+
+
+def test_json_diff_and_deep_merge():
+    from rkbx_practice.config import deep_merge, json_diff
+    base = {"ui": {"theme": "rekordbox", "language": "es"}, "lights": {"esp32_port": 4210}}
+    mine = {"ui": {"theme": "rekordbox", "language": "en", "light_view": True}, "lights": {"esp32_port": 4210}}
+    d = json_diff(base, mine)
+    assert d == {"ui": {"language": "en", "light_view": True}}
+    assert deep_merge({"ui": {"theme": "material", "language": "es"}}, d) == {
+        "ui": {"theme": "material", "language": "en", "light_view": True}}
 
 
 def test_start_simulator_reuses_running_one(library, tmp_path):
@@ -688,7 +701,9 @@ def test_set_layout_saves_config_and_sends_command(library, tmp_path):
     assert sent[-1].fx == "layout"
     assert json.loads(sent[-1].to_json())["strips"] == [{"leds": 20, "segments": 4, "pin": 25},
                                                         {"leds": 14, "segments": 3, "pin": 26}]
-    saved = json.loads(cfg_path.read_text(encoding="utf-8"))
+    saved = json.loads((tmp_path / "config.local.json").read_text(encoding="utf-8"))
     assert saved["lights"]["layout"]["strips"][0] == {"leds": 20, "segments": 4, "pin": 25}
-    assert saved["lights"]["events_dir"] == str(tmp_path / "l")          # el resto se conserva
+    original = json.loads(cfg_path.read_text(encoding="utf-8"))
+    assert original == {"lights": {"events_dir": str(tmp_path / "l")}}   # config.json no se toca
+    assert load_config(cfg_path).lights.layout["strips"][0]["leds"] == 20
     assert mgr.layout == [StripLayout(20, 4, 25), StripLayout(14, 3, 26)]

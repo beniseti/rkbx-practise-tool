@@ -229,6 +229,24 @@ def config_from_dict(data: dict[str, Any], base_dir: Path = PROJECT_ROOT) -> App
     return cfg
 
 
+def local_path(path: str | Path) -> Path:
+    """Ajustes propios del usuario: `config.local.json` junto a `config.json` (fuera de git).
+
+    La app guarda ahí lo que se cambia desde la ventana (latencia, tiras, idioma, tema…), así
+    `config.json` no cambia en el PC del usuario y `git pull` nunca choca con sus ajustes.
+    """
+    path = Path(path)
+    return path.with_name(path.stem + ".local" + path.suffix)
+
+
+def deep_merge(base: dict, over: dict) -> dict:
+    """`over` encima de `base` (los diccionarios se mezclan; el resto se sustituye)."""
+    out = dict(base)
+    for k, v in over.items():
+        out[k] = deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
 def load_config(path: str | Path | None = None) -> AppConfig:
     path = Path(path) if path else DEFAULT_CONFIG_PATH
     if not path.exists():
@@ -236,6 +254,12 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         return AppConfig()
     with path.open(encoding="utf-8") as fh:
         data = json.load(fh)
+    local = local_path(path)
+    if local.exists():
+        try:
+            data = deep_merge(data, json.loads(local.read_text(encoding="utf-8")))
+        except (OSError, ValueError) as exc:
+            log.warning("No se pudo leer %s (%s); se ignora", local, exc)
     # La raíz del proyecto es la carpeta que contiene `config/`.
     base_dir = path.resolve().parent.parent if path.parent.name == "config" else path.resolve().parent
     cfg = config_from_dict(data, base_dir=base_dir)
@@ -244,10 +268,10 @@ def load_config(path: str | Path | None = None) -> AppConfig:
 
 
 def save_value(path: str | Path, keys: list[str], value) -> None:
-    """Cambia un valor en config.json conservando el resto del archivo (p. ej. la latencia
-    calibrada desde la ventana)."""
+    """Guarda un ajuste cambiado desde la ventana (p. ej. la latencia calibrada) en
+    `config.local.json`, junto a `path`, sin tocar `config.json`."""
     from collections import OrderedDict
-    path = Path(path)
+    path = local_path(path)
     data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=OrderedDict) if path.exists() else {}
     node = data
     for k in keys[:-1]:
@@ -256,3 +280,18 @@ def save_value(path: str | Path, keys: list[str], value) -> None:
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     tmp.replace(path)
+
+
+def json_diff(base, mine):
+    """Lo que `mine` cambia respecto a `base` (para pasar ajustes propios a config.local.json)."""
+    if isinstance(base, dict) and isinstance(mine, dict):
+        out = {}
+        for k, v in mine.items():
+            if k not in base:
+                out[k] = v
+            else:
+                d = json_diff(base[k], v)
+                if d is not None:
+                    out[k] = d
+        return out or None
+    return None if base == mine else mine

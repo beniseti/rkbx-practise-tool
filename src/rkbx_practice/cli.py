@@ -328,6 +328,36 @@ def cmd_audio_test(cfg, args) -> int:
     return 0
 
 
+def cmd_config_from_stash(cfg, args) -> int:
+    """Pasa a config.local.json los ajustes que tenías en config.json (guardados con `git stash`)."""
+    import json
+    import subprocess
+    from .config import deep_merge, json_diff, local_path
+    src = cfg.source_path or (cfg.base_dir / "config" / "config.json")
+    rel = "config/config.json"
+
+    def show(ref: str):
+        out = subprocess.run(["git", "show", f"{ref}:{rel}"], cwd=cfg.base_dir, capture_output=True,
+                             text=True, encoding="utf-8")
+        if out.returncode != 0:
+            raise SystemExit(f"No se pudo leer {ref}:{rel} ({out.stderr.strip()}). ¿Hiciste «git stash»?")
+        return json.loads(out.stdout)
+
+    mine, base = show(args.stash), show(f"{args.stash}^1")
+    diff = json_diff(base, mine) or {}
+    if not diff:
+        _out("En ese stash config.json no tenía cambios tuyos: no hay nada que pasar.")
+        return 0
+    dest = local_path(src)
+    current = json.loads(dest.read_text(encoding="utf-8")) if dest.exists() else {}
+    dest.write_text(json.dumps(deep_merge(current, diff), indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8")
+    _out(f"Tus ajustes se han guardado en {dest}:")
+    _out(json.dumps(diff, indent=2, ensure_ascii=False))
+    _out("Ya puedes borrar el stash con «git stash drop».")
+    return 0
+
+
 def cmd_offsets(cfg, args) -> int:
     from .memory.offsets import load_offsets_dir
     from .memory.process import ProcessNotFound, attach
@@ -579,6 +609,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--port", type=int, help="Puerto (por defecto audio.review_http_port)")
     sp.add_argument("--no-browser", action="store_true")
     sp.set_defaults(func=cmd_history_review)
+
+    co = sub.add_parser("config", help="Ajustes").add_subparsers(dest="sub", required=True)
+    sp = co.add_parser("from-stash", help="Pasar tus cambios de config.json (git stash) a config.local.json")
+    sp.add_argument("--stash", default="stash@{0}")
+    sp.set_defaults(func=cmd_config_from_stash)
 
     au = sub.add_parser("audio", help="Grabación del audio de la sesión").add_subparsers(dest="sub", required=True)
     au.add_parser("devices", help="Dispositivos de audio disponibles").set_defaults(func=cmd_audio_devices)
