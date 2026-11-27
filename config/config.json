@@ -304,9 +304,20 @@
       }
     },
     "layout": {
-      "strips": 3,
-      "sections_per_strip": 3,
-      "leds_per_section": 5
+      "strips": [
+        {
+          "leds": 14,
+          "segments": 3
+        },
+        {
+          "leds": 14,
+          "segments": 3
+        },
+        {
+          "leds": 14,
+          "segments": 3
+        }
+      ]
     },
     "fallback": {
       "fx": "wave",

@@ -121,8 +121,8 @@ class LightsConfig:
     simulator_http_port: int = 8765   # página http://127.0.0.1:8765/
     simulator_leds: int = 60          # (obsoleto: se usa layout)
     # Montaje: 3 tiras con 3 secciones cada una = 9 zonas (tira 1 → zonas 1-3, tira 2 → 4-6…).
-    layout: dict = field(default_factory=lambda: {"strips": 3, "sections_per_strip": 3,
-                                                  "leds_per_section": 20})
+    # Montaje (editable en la ventana: «Montaje…»): una entrada por canal con sus píxeles y segmentos.
+    layout: dict = field(default_factory=lambda: {"strips": [{"leds": 14, "segments": 3}] * 3})
     send_to_simulator: bool = False   # además del ESP32, enviar al simulador local
     # Catálogo de efectos del ESP32 con sus parámetros por defecto (cada uno los suyos).
     # "live" = BPM real del deck al enviar; "until_next" = hasta la siguiente sección.

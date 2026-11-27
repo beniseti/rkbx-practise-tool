@@ -117,6 +117,10 @@ entró el tema nuevo.
 
 ## Luces
 
+**Montaje…** (en la ventana): cuántas tiras (hasta 4), cuántos píxeles y cuántos segmentos (zonas)
+tiene cada una. Se guarda en `config/config.json` y se envía al ESP32, que lo recuerda; no hace
+falta reprogramarlo. **Identificar zonas** enciende cada zona de un color para ver su número.
+
 - **Efectos…** en la ventana: análisis de cada tema (frases y cambios de energía) en una línea de
   tiempo y asignación de efectos; se guardan en `data/lights/<id>.json`.
 - **Luces**: activa el envío en directo al ESP32 (`lights.esp32_ip:esp32_port`).

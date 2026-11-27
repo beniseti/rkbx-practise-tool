@@ -60,6 +60,8 @@ class PracticeController:
 
     def set_lights_enabled(self, on: bool) -> None:
         self.lights.engine.enabled = on
+        if on:
+            self.lights.send_layout()     # el ESP32 siempre con el montaje de config.json
 
     def use_demo_source(self, track_s: float = 30.0, blend_s: float = 8.0) -> None:
         """Sustituye la memoria de Rekordbox por la simulación (ver live/demo.py)."""

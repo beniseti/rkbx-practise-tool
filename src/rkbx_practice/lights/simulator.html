@@ -68,7 +68,6 @@
       <h2>Probar efectos</h2>
       <div class="tests" id="tests"></div>
       <div class="opts">
-        <label>LEDs por sección <input id="leds" type="number" min="1" max="200" value="20" style="width:64px"></label>
         <span class="dim" id="layoutInfo"></span>
         <label>Zonas <input id="zones" placeholder="all · odd · even · strip:2 · section:1 · 1,5,9" style="width:260px"></label>
       </div>
@@ -107,9 +106,28 @@ function hsv(h, s, v) {
   return r.map(x => x * 255);
 }
 
-// --- Montaje: tiras × secciones = zonas (tira 1 → zonas 1..S, tira 2 → S+1..2S…) ---------------
-const L = { strips: 3, sections: 3 };
-const nZones = () => L.strips * L.sections;
+// --- Montaje: cada tira con sus píxeles y segmentos; zonas numeradas tira a tira ------------
+// (igual que el ESP32: config.json lights.layout, cambia en marcha con el comando "layout")
+const L = { strips: [{ leds: 14, segments: 3 }, { leds: 14, segments: 3 }, { leds: 14, segments: 3 }],
+            owner: [], total: 0 };
+const nZones = () => L.owner.length;
+function setLayout(strips) {
+  const ok = (Array.isArray(strips) ? strips : []).slice(0, 4).map(s => ({
+    leds: Math.max(1, Math.min(300, Number(s.leds ?? s.pixels) || 14)),
+    segments: Math.max(1, Math.min(8, Number(s.segments) || 1)) }));
+  if (ok.length) L.strips = ok;
+  L.owner = []; L.total = 0;
+  L.strips.forEach((s, si) => {
+    for (let c = 0; c < s.segments; c++) {
+      const a = Math.floor(c * s.leds / s.segments), b = Math.floor((c + 1) * s.leds / s.segments);
+      L.owner.push({ strip: si, seg: c, a, n: b - a, leds: s.leds, k0: L.total + a });
+    }
+    L.total += s.leds;
+  });
+  document.getElementById("layoutInfo").textContent =
+    `${L.strips.length} tiras · ${nZones()} zonas (` +
+    L.strips.map((s, i) => `T${i + 1}: ${s.leds} píx/${s.segments} seg`).join(" · ") + ")";
+}
 
 function expandZones(spec) {
   const all = Array.from({ length: nZones() }, (_, i) => i + 1);
@@ -118,11 +136,11 @@ function expandZones(spec) {
   const t = String(spec).trim().toLowerCase();
   if (t === "odd" || t === "impares") return all.filter(z => z % 2 === 1);
   if (t === "even" || t === "pares") return all.filter(z => z % 2 === 0);
-  const m = /^(strip|tira|section|seccion|sección):(\d+)$/.exec(t);
+  const m = /^(strip|tira|section|seccion|sección|segment|segmento):(\d+)$/.exec(t);
   if (m) {
     const n = Number(m[2]);
-    return ["strip", "tira"].includes(m[1]) ? all.filter(z => Math.floor((z - 1) / L.sections) + 1 === n)
-                                            : all.filter(z => (z - 1) % L.sections + 1 === n);
+    return ["strip", "tira"].includes(m[1]) ? all.filter(z => L.owner[z - 1].strip + 1 === n)
+                                            : all.filter(z => L.owner[z - 1].seg + 1 === n);
   }
   return t.split(",").map(Number).filter(z => z >= 1 && z <= nZones());
 }
@@ -135,12 +153,14 @@ function resetZones() {
   S.zones = Array.from({ length: nZones() }, () => ({ base: { mode: "solid", color: [0,0,0], since: 0 },
                                                        prevBase: null, baseAt: 0, overlay: null }));
 }
+setLayout(L.strips);
 resetZones();
 
 function apply(cmd) {
   const now0 = performance.now();
   const fx = String(cmd.fx || "?").toLowerCase();
   if (fx === "sync") { applySync(cmd, now0); return; }
+  if (fx === "layout") { setLayout(cmd.strips); resetZones(); return; }
   // `phase`: punto del beat (0..1) en el que se aplica; se alinea el reloj de beats del efecto.
   const beatMsCmd = 60000 / (Number(cmd.bpm) || 128);
   const now = cmd.phase !== undefined ? now0 - Number(cmd.phase) * beatMsCmd : now0;
@@ -170,6 +190,7 @@ function apply(cmd) {
       case "rainbow": over({ fx, dur: dur || 4000, speed: Number(cmd.speed || 0.5) }); break;
       case "build": over({ fx, dur: dur || 8000, color: color([255,255,255]) }); break;
       case "prebuild": over({ fx, dur: dur || 16000, color: color([0,80,255]) }); break;
+      case "identify": case "identificar": over({ fx: "identify", dur: dur || 6000, color: [255,255,255] }); break;
       default: over({ fx: "unknown", dur: dur || 600, color: [160, 0, 255] });
     }
   });
@@ -253,10 +274,11 @@ function zoneBase(st, now, x, s, k) {
 }
 
 // Color de un LED: índice dentro de la zona (i de n), para efectos que recorren la zona.
-function ledColor(st, now, i, n, z) {
-  const s = Math.floor((z - 1) / L.sections), c = (z - 1) % L.sections;
-  const x = (c * n + i + 0.5) / (L.sections * n);          // posición a lo largo de la tira
-  const base = zoneBase(st, now, x, s, (z - 1) * n + i);
+function ledColor(st, now, i, z) {
+  const o0 = L.owner[z - 1], n = o0.n, s = o0.strip;
+  const x = (o0.a + i + 0.5) / o0.leds;                    // posición a lo largo de la tira
+  const k = o0.k0 + i;                                     // píxel en el conjunto de tiras
+  const base = zoneBase(st, now, x, s, k);
   const o = st.overlay;
   if (!o) return base;
   const p = (now - o.start) / o.dur;
@@ -269,7 +291,11 @@ function ledColor(st, now, i, n, z) {
   if (o.fx === "rainbow") {
     const t = (now - o.start) / 1000 * o.speed;
     const fade = Math.min(1, (1 - p) * 6);
-    return mix(base, hsv(((z - 1) * n + i) / (nZones() * n) + t, 1, 1), fade);
+    return mix(base, hsv(k / Math.max(1, L.total) + t, 1, 1), fade);
+  }
+  if (o.fx === "identify") {                       // cada zona con su color; el 1.er píxel en blanco
+    if (i === 0) return [255, 255, 255];
+    return Math.floor((now - o.start) / 400) % 2 === 0 ? hsv((z - 1) / Math.max(1, nZones()), 1, 1) : scale(base, 0.1);
   }
   if (o.fx === "prebuild") {                       // carga: las tiras se van llenando hasta el final
     const edge = 0.06;
@@ -298,32 +324,29 @@ function draw(now) {
   if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  const per = Math.max(1, Math.min(200, Number(document.getElementById("leds").value) || 20));
-  const gap = 18, padX = 34, rowH = h / L.strips;
-  const secW = (w - 2 * padX - gap * (L.sections - 1)) / L.sections;
-  const size = Math.max(1.5, Math.min(7, secW / per * 0.36));
+  const nS = L.strips.length, gap = 14, padX = 34, rowH = h / nS;
+  const maxLeds = Math.max(...L.strips.map(t => t.leds));
+  const unit = (w - 2 * padX - gap * 7) / maxLeds;          // misma escala para todas las tiras
+  const size = Math.max(1.5, Math.min(7, unit * 0.36));
   let avg = [0,0,0], total = 0;
   ctx.font = "11px Segoe UI, Arial"; ctx.textBaseline = "middle";
-  for (let s = 0; s < L.strips; s++) {
-    const y = rowH * (s + 0.5);
-    ctx.shadowBlur = 0; ctx.fillStyle = "#666"; ctx.fillText(`T${s + 1}`, 6, y);
-    for (let c = 0; c < L.sections; c++) {
-      const z = s * L.sections + c + 1, st = S.zones[z - 1];
-      const x0 = padX + c * (secW + gap);
-      ctx.shadowBlur = 0; ctx.fillStyle = "#444";
-      ctx.fillText(String(z), x0 + secW / 2 - 3, y - Math.max(14, size * 3));
-      for (let i = 0; i < per; i++) {
-        const col = ledColor(st, now, i, per, z);
-        const x = x0 + (i + 0.5) / per * secW;
-        const rgb = `rgb(${col.map(v => Math.round(Math.max(0, Math.min(255, v)))).join(",")})`;
-        const lit = Math.max(...col) > 8;
-        ctx.shadowBlur = lit ? size * 3 : 0; ctx.shadowColor = rgb;
-        ctx.fillStyle = lit ? rgb : "#1a1a1a";
-        ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.fill();
-        avg = avg.map((v, k) => v + col[k]); total++;
-      }
+  L.owner.forEach((o, zi) => {
+    const z = zi + 1, st = S.zones[zi], y = rowH * (o.strip + 0.5);
+    if (o.seg === 0) { ctx.shadowBlur = 0; ctx.fillStyle = "#666"; ctx.fillText(`T${o.strip + 1}`, 6, y); }
+    const x0 = padX + o.a * unit + o.seg * gap, segW = o.n * unit;
+    ctx.shadowBlur = 0; ctx.fillStyle = "#444";
+    ctx.fillText(String(z), x0 + segW / 2 - 3, y - Math.max(14, size * 3));
+    for (let i = 0; i < o.n; i++) {
+      const col = ledColor(st, now, i, z);
+      const x = x0 + (i + 0.5) * unit;
+      const rgb = `rgb(${col.map(v => Math.round(Math.max(0, Math.min(255, v)))).join(",")})`;
+      const lit = Math.max(...col) > 8;
+      ctx.shadowBlur = lit ? size * 3 : 0; ctx.shadowColor = rgb;
+      ctx.fillStyle = lit ? rgb : "#1a1a1a";
+      ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.fill();
+      avg = avg.map((v, k) => v + col[k]); total++;
     }
-  }
+  });
   ctx.shadowBlur = 0;
   avg = avg.map(v => v / Math.max(total, 1));
   room.style.background = `radial-gradient(ellipse at center, rgb(${avg.map(Math.round).join(",")}) 0%, transparent 70%)`;
@@ -377,11 +400,7 @@ function parseParams(text) {
   return out;
 }
 fetch("/config").then(r => r.json()).then(cfg => {
-  const lay = cfg.layout || {};
-  L.strips = Number(lay.strips) || 3; L.sections = Number(lay.sections_per_strip) || 3;
-  document.getElementById("leds").value = lay.leds_per_section || 20;
-  document.getElementById("layoutInfo").textContent =
-    `${L.strips} tiras × ${L.sections} secciones = ${nZones()} zonas (impares: ${expandZones("odd").join(",")})`;
+  setLayout((cfg.layout || {}).strips);
   resetZones();
   document.getElementById("udp").textContent = `UDP ${cfg.udp}`;
   const effects = Object.keys(cfg.effects || {}).length ? cfg.effects

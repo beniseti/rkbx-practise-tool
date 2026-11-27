@@ -90,6 +90,7 @@ Fx parseFx(const char* n) {
       {"breathe", Fx::Breathe}, {"alternate", Fx::Alternate}, {"chase", Fx::Chase},
       {"wave", Fx::Wave},     {"twinkle", Fx::Twinkle}, {"flash", Fx::Flash},
       {"strobe", Fx::Strobe}, {"rainbow", Fx::Rainbow}, {"build", Fx::Build}, {"prebuild", Fx::Prebuild},
+      {"identify", Fx::Identify}, {"identificar", Fx::Identify}, {"layout", Fx::Layout},
       {"sync", Fx::Sync},
   };
   for (auto& e : table)
@@ -118,18 +119,39 @@ bool parseColor(const char* t, RGB& out) {
   return false;
 }
 
-uint16_t parseZones(const char* spec, int strips, int sections) {
-  int total = strips * sections;
-  uint16_t all = (uint16_t)((1u << total) - 1);
+int sanitizeLayout(StripLayout* strips, int n) {
+  if (n > MAX_STRIPS) n = MAX_STRIPS;
+  if (n < 1) n = 1;
+  int zones = 0;
+  for (int i = 0; i < n; ++i) {
+    StripLayout& l = strips[i];
+    if (l.pixels < 1) l.pixels = 1;
+    if (l.pixels > MAX_PIXELS) l.pixels = MAX_PIXELS;
+    if (l.segments < 1) l.segments = 1;
+    if (l.segments > MAX_SECTIONS) l.segments = MAX_SECTIONS;
+    if (l.segments > l.pixels) l.segments = (uint8_t)l.pixels;
+    if (zones + l.segments > MAX_ZONES) l.segments = (uint8_t)(MAX_ZONES - zones);
+    if (l.segments == 0) return i;   // no caben más zonas
+    zones += l.segments;
+  }
+  return n;
+}
+
+static uint32_t bit(int z) { return (uint32_t)1u << (z - 1); }
+
+uint32_t parseZones(const char* spec, const StripLayout* strips, int n) {
+  int total = 0;
+  for (int i = 0; i < n; ++i) total += strips[i].segments;
+  uint32_t all = total >= 32 ? 0xFFFFFFFFu : ((1u << total) - 1);
   if (!spec || !*spec || ieq(spec, "all") || ieq(spec, "todas")) return all;
   if (ieq(spec, "odd") || ieq(spec, "impares")) {
-    uint16_t m = 0;
-    for (int z = 1; z <= total; z += 2) m |= 1u << (z - 1);
+    uint32_t m = 0;
+    for (int z = 1; z <= total; z += 2) m |= bit(z);
     return m;
   }
   if (ieq(spec, "even") || ieq(spec, "pares")) {
-    uint16_t m = 0;
-    for (int z = 2; z <= total; z += 2) m |= 1u << (z - 1);
+    uint32_t m = 0;
+    for (int z = 2; z <= total; z += 2) m |= bit(z);
     return m;
   }
   const char* colon = strchr(spec, ':');
@@ -138,18 +160,19 @@ uint16_t parseZones(const char* spec, int strips, int sections) {
     size_t len = (size_t)(colon - spec);
     if (len >= sizeof(kind)) return 0;
     memcpy(kind, spec, len);
-    int n = atoi(colon + 1);
-    uint16_t m = 0;
+    int k = atoi(colon + 1);
     bool strip = ieq(kind, "strip") || ieq(kind, "tira");
-    bool section = ieq(kind, "section") || ieq(kind, "seccion") || ieq(kind, "sección");
+    bool section = ieq(kind, "section") || ieq(kind, "seccion") || ieq(kind, "sección") ||
+                   ieq(kind, "segment") || ieq(kind, "segmento");
     if (!strip && !section) return 0;
-    for (int z = 1; z <= total; ++z) {
-      int s = (z - 1) / sections + 1, c = (z - 1) % sections + 1;
-      if ((strip && s == n) || (section && c == n)) m |= 1u << (z - 1);
-    }
+    uint32_t m = 0;
+    int z = 1;
+    for (int s = 0; s < n; ++s)
+      for (int c = 1; c <= strips[s].segments; ++c, ++z)
+        if ((strip && s + 1 == k) || (section && c == k)) m |= bit(z);
     return m;
   }
-  uint16_t m = 0;   // lista "1,5,9"
+  uint32_t m = 0;   // lista "1,5,9"
   const char* p = spec;
   while (*p) {
     while (*p == ' ' || *p == ',') ++p;
@@ -157,25 +180,57 @@ uint16_t parseZones(const char* spec, int strips, int sections) {
     char* end = nullptr;
     long z = strtol(p, &end, 10);
     if (end == p) return 0;
-    if (z >= 1 && z <= total) m |= 1u << (z - 1);
+    if (z >= 1 && z <= total) m |= bit((int)z);
     p = end;
   }
   return m;
 }
 
-uint16_t zonesFromList(const int* list, int n, int strips, int sections) {
-  int total = strips * sections;
-  uint16_t m = 0;
+uint32_t zonesFromList(const int* list, int n, int total) {
+  uint32_t m = 0;
   for (int i = 0; i < n; ++i)
-    if (list[i] >= 1 && list[i] <= total) m |= 1u << (list[i] - 1);
+    if (list[i] >= 1 && list[i] <= total && list[i] <= MAX_ZONES) m |= bit(list[i]);
   return m;
+}
+
+static int uniform(StripLayout* out, int strips, int sections, int pixels) {
+  if (strips > MAX_STRIPS) strips = MAX_STRIPS;
+  for (int i = 0; i < strips; ++i) out[i] = StripLayout{(uint16_t)pixels, (uint8_t)sections};
+  return strips;
+}
+
+uint32_t parseZones(const char* spec, int strips, int sections) {
+  StripLayout l[MAX_STRIPS];
+  int n = uniform(l, strips, sections, MAX_PIXELS);
+  return parseZones(spec, l, n);
+}
+
+uint32_t zonesFromList(const int* list, int n, int strips, int sections) {
+  return zonesFromList(list, n, strips * sections);
 }
 
 // ---------------------------------------------------------------------------
 void Engine::begin(int strips, int sections, int pixelsPerStrip) {
-  strips_ = strips < 1 ? 1 : (strips > MAX_STRIPS ? MAX_STRIPS : strips);
-  sections_ = sections < 1 ? 1 : (sections > MAX_SECTIONS ? MAX_SECTIONS : sections);
-  pixels_ = pixelsPerStrip < 1 ? 1 : pixelsPerStrip;
+  StripLayout l[MAX_STRIPS];
+  int n = uniform(l, strips < 1 ? 1 : strips, sections, pixelsPerStrip);
+  setLayout(l, n);
+}
+
+void Engine::setLayout(const StripLayout* strips, int n) {
+  StripLayout l[MAX_STRIPS] = {};
+  if (n > MAX_STRIPS) n = MAX_STRIPS;
+  for (int i = 0; i < n; ++i) l[i] = strips[i];
+  n = sanitizeLayout(l, n);
+  strips_ = n;
+  zones_n_ = 0;
+  totalPixels_ = 0;
+  for (int i = 0; i < MAX_STRIPS; ++i) {
+    layout_[i] = i < n ? l[i] : StripLayout{0, 0};
+    zoneStart_[i] = zones_n_;
+    zones_n_ += layout_[i].segments;
+    totalPixels_ += layout_[i].pixels;
+  }
+  zoneStart_[MAX_STRIPS] = zones_n_;
   for (auto& z : zones_) z = Zone();
 }
 
@@ -206,16 +261,20 @@ void Engine::apply(const Command& c, uint32_t now) {
     applySync(c, now);
     return;
   }
+  if (c.fx == Fx::Layout) {
+    if (c.layoutCount) setLayout(c.layout, c.layoutCount);
+    return;
+  }
   float bpm = c.bpm > 1 ? c.bpm : 128.0f;
   // `phase`: punto del beat (0..1) en que se aplica → el reloj de beats empieza antes.
   uint32_t t0 = c.phase >= 0 ? now - (uint32_t)(c.phase * beatMs(bpm)) : now;
   int total = zoneCount();
   int count = 0;
   for (int zi = 0; zi < total; ++zi)
-    if (c.zoneMask & (1u << zi)) ++count;
+    if (c.zoneMask & ((uint32_t)1u << zi)) ++count;
   int pos = 0;
   for (int zi = 0; zi < total; ++zi) {
-    if (!(c.zoneMask & (1u << zi))) continue;
+    if (!(c.zoneMask & ((uint32_t)1u << zi))) continue;
     Zone& z = zones_[zi];
     auto setBase = [&](Base b) {
       z.prev = z.base;
@@ -277,6 +336,7 @@ void Engine::apply(const Command& c, uint32_t now) {
       case Fx::Rainbow: over(Fx::Rainbow, 4000, RGB{255, 255, 255}); break;
       case Fx::Build: over(Fx::Build, 8000, RGB{255, 255, 255}); break;
       case Fx::Prebuild: over(Fx::Prebuild, 16000, RGB{0, 80, 255}); break;
+      case Fx::Identify: over(Fx::Identify, 6000, RGB{255, 255, 255}); break;
       case Fx::Unknown:
       default: over(Fx::Unknown, 600, RGB{160, 0, 255}); break;
     }
@@ -354,7 +414,7 @@ RGB Engine::ledColor(const Zone& z, uint32_t now, int zone, int i, int n, float 
     case Fx::Rainbow: {
       float t = el / 1000.0f * o.speed;
       float fade = clamp01((1 - p) * 6);
-      float hue = (float)k / (strips_ * pixels_) + t;
+      float hue = (float)k / (totalPixels_ > 0 ? totalPixels_ : 1) + t;
       return mix(base, hsv(hue, 1, 1), fade);
     }
     case Fx::Prebuild: {                                  // carga: la tira se llena hasta el final
@@ -372,27 +432,38 @@ RGB Engine::ledColor(const Zone& z, uint32_t now, int zone, int i, int n, float 
       RGB dim = scale(base, 0.3f);
       return fabsf(i - (n - 1) / 2.0f) <= lit / 2 ? mix(dim, o.color, on ? 0.25f + 0.75f * p : 0.1f * p) : dim;
     }
+    case Fx::Identify: {                                  // cada zona con su color; 1.er píxel blanco
+      if (i == 0) return RGB{255, 255, 255};
+      bool on = (el / 400) % 2 == 0;
+      return on ? hsv((float)zone / (zones_n_ > 0 ? zones_n_ : 1), 1, 1) : scale(base, 0.1f);
+    }
     default: return mix(base, o.color, sinf(p * PI_F));
   }
 }
 
-int Engine::sectionStart(int c) const { return c * pixels_ / sections_; }
+int Engine::segmentStart(int strip, int seg) const {
+  const StripLayout& l = layout_[strip];
+  return l.segments ? seg * l.pixels / l.segments : 0;
+}
 
 void Engine::render(uint32_t now, RGB* const* out) const {
-  // Las secciones se reparten los píxeles de la tira lo más igual posible (14 → 4, 5, 5).
+  // Los segmentos se reparten los píxeles de su tira lo más igual posible (14 → 4, 5, 5).
+  uint32_t k0 = 0;
   for (int s = 0; s < strips_; ++s) {
     RGB* strip = out[s];
-    if (!strip) continue;
-    for (int c = 0; c < sections_; ++c) {
-      int zone = s * sections_ + c;
-      const Zone& z = zones_[zone];
-      int a = sectionStart(c), n = sectionStart(c + 1) - a;
-      for (int i = 0; i < n; ++i) {
-        float x = (a + i + 0.5f) / (float)pixels_;           // posición a lo largo de la tira
-        uint32_t k = (uint32_t)(s * pixels_ + a + i);
-        strip[a + i] = ledColor(z, now, zone, i, n, x, s, k);
+    const StripLayout& l = layout_[s];
+    if (strip) {
+      for (int c = 0; c < l.segments; ++c) {
+        int zone = zoneStart_[s] + c;
+        const Zone& z = zones_[zone];
+        int a = segmentStart(s, c), n = segmentStart(s, c + 1) - a;
+        for (int i = 0; i < n; ++i) {
+          float x = (a + i + 0.5f) / (float)l.pixels;        // posición a lo largo de la tira
+          strip[a + i] = ledColor(z, now, zone, i, n, x, s, k0 + a + i);
+        }
       }
     }
+    k0 += l.pixels;
   }
 }
 

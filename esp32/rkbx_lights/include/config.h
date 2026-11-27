@@ -1,22 +1,22 @@
 // Configuración del montaje y de la red. Cambia aquí pines, número de LEDs, potencia y Wi-Fi.
 #pragma once
 
-// ---- Tiras: 3 tiras × 3 secciones = 9 zonas (igual que lights.layout en config/config.json) ----
-// Montaje del usuario: WS2811 a 12 V, 70 cm por tira, fuente de 12 V / 150 W.
+// ---- Tiras ----
+// Hasta 4 CANALES (un pin de datos cada uno). El montaje (cuántas tiras, cuántos píxeles y
+// segmentos tiene cada una) se cambia desde la app (botón «Montaje…»), sin reprogramar: el ESP32
+// lo guarda en su memoria y lo recuerda al reiniciar. Estos son solo los valores de fábrica.
 // En WS2811 de 12 V cada chip controla un grupo de 3 LEDs = 1 PÍXEL (se corta cada 3 LEDs).
-// PIXELS_PER_STRIP = número de chips (o de grupos de 3 LEDs) de cada tira:
 //   60 LEDs/m → 20 píxeles/m → 70 cm ≈ 14 · 30 LEDs/m → 10 píxeles/m → 70 cm = 7.
-// Las 3 secciones se reparten los píxeles lo más igual posible (14 → 4 + 5 + 5).
-#define STRIPS 3
-#define SECTIONS_PER_STRIP 3
-#define PIXELS_PER_STRIP 14
+#define DEFAULT_STRIPS 3
+#define DEFAULT_SEGMENTS 3
+#define DEFAULT_PIXELS 14
 
-// Pines de datos (GPIO). En un ESP32 (ESP32-WROOM-32D) estos son seguros para salida:
+// Pin de datos de cada canal (GPIO). En un ESP32 (ESP32-WROOM-32D) estos son seguros para salida:
 // evita 0, 2, 12 y 15 (arranque), 6-11 (flash interna) y 34-39 (solo entrada).
 #define PIN_STRIP_1 25
 #define PIN_STRIP_2 26
 #define PIN_STRIP_3 27
-#define PIN_STRIP_4 14                     // solo si STRIPS = 4
+#define PIN_STRIP_4 14
 
 // Tipo de LED (FastLED). WS2811 a 800 kHz (si parpadea o no responde, prueba WS2811_400).
 // El orden de color de las WS2811 varía según el fabricante: en el barrido de arranque la tira 1

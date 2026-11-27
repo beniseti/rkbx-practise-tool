@@ -11,24 +11,37 @@ Por defecto al puerto 4210 de `rkbx-luces.local` (ESP32 en la Wi-Fi de casa, mDN
 
 ## Montaje y zonas
 
-3 tiras × 3 secciones = **9 zonas** (`lights.layout` en `config/config.json`):
+El montaje se cambia sin reprogramar (ventana **Montaje…** de la app, `lights.layout` en
+`config/config.json`): hasta **4 tiras** (canales: GPIO 25, 26, 27 y 14), cada una con sus
+**píxeles** (hasta 300) y **segmentos** (hasta 8; como mucho 32 zonas en total). Cada segmento es
+una **zona**; se numeran tira a tira. Ejemplo con 3 tiras × 3 segmentos:
 
-| | Sección 1 | Sección 2 | Sección 3 |
+| | Segmento 1 | Segmento 2 | Segmento 3 |
 |---|---|---|---|
 | Tira 1 | 1 | 2 | 3 |
 | Tira 2 | 4 | 5 | 6 |
 | Tira 3 | 7 | 8 | 9 |
 
+Con tiras distintas (p. ej. tira 1 con 4 segmentos y tira 2 con 2): tira 1 → 1-4, tira 2 → 5-6.
+Los segmentos se reparten los píxeles de su tira a partes iguales (14 píxeles en 3 → 4 + 5 + 5).
+
 `zones` (opcional, por defecto todas):
 
 | Valor | Zonas |
 |---|---|
-| `all` / `todas` | 1-9 |
-| `odd` / `impares` | 1, 3, 5, 7, 9 (tablero de ajedrez) |
-| `even` / `pares` | 2, 4, 6, 8 |
-| `strip:N` / `tira:N` | las 3 secciones de la tira N |
-| `section:N` / `seccion:N` | la sección N de las 3 tiras |
+| `all` / `todas` | todas |
+| `odd` / `impares` | 1, 3, 5… (con 3 × 3: tablero de ajedrez) |
+| `even` / `pares` | 2, 4, 6… |
+| `strip:N` / `tira:N` | los segmentos de la tira N |
+| `section:N` / `seccion:N` / `segmento:N` | el segmento N de cada tira que lo tenga |
 | `1,5,9` o `[1,5,9]` | lista |
+
+### Comandos de montaje
+
+| `fx` | Parámetros | Qué hace |
+|---|---|---|
+| `layout` | `strips`: `[{"leds": 14, "segments": 3}, …]` | Cambia el montaje, lo guarda en la memoria del ESP32 (se recuerda al reiniciar) y reinicia los efectos. La app lo envía al activar «Luces» y al guardar el montaje |
+| `identify` | `dur_ms` | Cada zona parpadea con su color y su primer píxel en blanco, para ver qué número tiene cada una |
 
 Cada zona tiene su propio estado: un comando solo cambia las zonas a las que va.
 

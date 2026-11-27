@@ -66,13 +66,19 @@ def resolve_live(params: dict, bpm: float | None) -> dict:
     return out
 
 
-def expand_zones(spec, strips: int = 3, sections: int = 3) -> list[int]:
-    """Zonas (1-based) a las que va un efecto. Zona = (tira - 1) × secciones + sección.
+def expand_zones(spec, strips: int = 3, sections: int = 3, layout=None) -> list[int]:
+    """Zonas (1-based) a las que va un efecto. Las zonas se numeran tira a tira.
 
-    `all` (o vacío) · `odd`/`impares` · `even`/`pares` · `strip:2`/`tira:2` · `section:2`/`seccion:2` ·
-    lista `1,5,9` (o [1, 5, 9]). Las zonas fuera de rango se ignoran.
+    `all` (o vacío) · `odd`/`impares` · `even`/`pares` · `strip:2`/`tira:2` · `section:2`/`seccion:2`
+    (el segmento 2 de cada tira que lo tenga) · lista `1,5,9` (o [1, 5, 9]). Fuera de rango se ignora.
+    `layout`: lista de `StripLayout` (montaje libre); si no, `strips` × `sections` uniforme.
     """
-    total = strips * sections
+    if layout is None:
+        segs = [sections] * strips
+    else:
+        segs = [s.segments for s in layout]
+    owner = [(si + 1, c + 1) for si, n in enumerate(segs) for c in range(n)]   # zona → (tira, segmento)
+    total = len(owner)
     every = list(range(1, total + 1))
     if spec is None or spec == "" or spec == "all" or spec == "todas":
         return every
@@ -88,9 +94,9 @@ def expand_zones(spec, strips: int = 3, sections: int = 3) -> list[int]:
             kind, _, num = text.partition(":")
             n = int(num)
             if kind in ("strip", "tira"):
-                return [z for z in every if (z - 1) // sections + 1 == n]
-            if kind in ("section", "seccion", "sección"):
-                return [z for z in every if (z - 1) % sections + 1 == n]
+                return [z for z in every if owner[z - 1][0] == n]
+            if kind in ("section", "seccion", "sección", "segment", "segmento"):
+                return [z for z in every if owner[z - 1][1] == n]
             raise ValueError(f"zona no válida: {spec}")
         items = [int(x) for x in text.replace(" ", "").split(",") if x]
     return [z for z in items if 1 <= z <= total]

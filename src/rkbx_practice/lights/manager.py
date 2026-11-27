@@ -101,6 +101,33 @@ class LightsManager:
             self._shows[show.track_id] = show
         return path
 
+    # --- montaje (tiras, píxeles, segmentos) ---------------------------
+    @property
+    def layout(self):
+        from .layout import normalize_layout
+        return normalize_layout(self.cfg.lights.layout)
+
+    def send_layout(self) -> bool:
+        """Envía el montaje al ESP32 (y al simulador), que lo guarda y lo aplica sin reiniciar."""
+        from .layout import layout_command
+        try:
+            return bool(self.sender.send(layout_command(self.layout)))
+        except Exception:  # noqa: BLE001
+            log.exception("No se pudo enviar el montaje")
+            return False
+
+    def set_layout(self, strips, save: bool = True) -> bool:
+        """Cambia el montaje: config.json (si `save`), simulador y ESP32."""
+        from ..config import save_value
+        from .layout import layout_to_config, normalize_layout
+        strips = normalize_layout(layout_to_config(strips))
+        self.cfg.lights.layout = layout_to_config(strips)
+        if save and self.cfg.source_path is not None:
+            save_value(self.cfg.source_path, ["lights", "layout"], self.cfg.lights.layout)
+        if self.simulator is not None:
+            self.simulator.layout = self.cfg.lights.layout
+        return self.send_layout()
+
     # --- simulador en el navegador -----------------------------------
     def start_simulator(self) -> str:
         """Arranca el simulador dentro de la app y envía también a él. Devuelve la URL."""

@@ -19,6 +19,11 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+
+def _norm(layout):
+    from .layout import layout_to_config, normalize_layout
+    return layout_to_config(normalize_layout(layout))
+
 log = logging.getLogger(__name__)
 
 PAGE = Path(__file__).with_name("simulator.html")
@@ -45,7 +50,8 @@ class LightSimulator:
         self.http_addr = (http_host, http_port)
         self.leds = leds
         self.effects = effects or {}
-        self.layout = layout or {"strips": 3, "sections_per_strip": 3, "leds_per_section": 20}
+        from .layout import layout_to_config, normalize_layout
+        self.layout = layout_to_config(normalize_layout(layout or {}))
         self._clients: list[queue.Queue] = []
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -111,7 +117,7 @@ class LightSimulator:
                 if self.path in ("/", "/index.html"):
                     self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
                 elif self.path == "/config":
-                    body = json.dumps({"leds": sim.leds, "effects": sim.effects, "layout": sim.layout,
+                    body = json.dumps({"leds": sim.leds, "effects": sim.effects, "layout": _norm(sim.layout),
                                        "udp": f"{sim.udp_addr[0]}:{sim.udp_addr[1]}"}).encode()
                     self._send(200, body, "application/json")
                 elif self.path == "/events":

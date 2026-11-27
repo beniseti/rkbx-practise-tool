@@ -201,6 +201,37 @@ int main() {
   pb.render(10900, qout);                    // casi al final: toda la tira
   CHECK(q0[28].r > 200);
 
+  // --- montaje libre: cada tira con sus píxeles y segmentos (se cambia en marcha con "layout")
+  StripLayout lay[4] = {{10, 2}, {20, 4}, {6, 3}, {8, 1}};
+  CHECK(parseZones("strip:2", lay, 4) == 0b0000111100u);          // zonas 3-6
+  CHECK(parseZones("section:3", lay, 4) == ((1u << 4) | (1u << 8)));   // zona 5 (tira 2) y 9 (tira 3)
+  CHECK(parseZones("all", lay, 4) == 0x3FFu);
+  Engine lv;
+  lv.begin(3, 3, 30);
+  Command lc;
+  lc.fx = parseFx("layout");
+  lc.layoutCount = 4;
+  for (int i = 0; i < 4; ++i) lc.layout[i] = lay[i];
+  lv.apply(lc, 0);
+  CHECK(lv.zoneCount() == 10 && lv.stripCount() == 4);
+  RGB m0[10], m1[20], m2[6], m3[8];
+  RGB* wout[4] = {m0, m1, m2, m3};
+  Command zc;
+  zc.fx = Fx::Color;
+  zc.hasColor = parseColor("rojo", zc.color);
+  zc.zoneMask = parseZones("strip:2", lv.layout(), lv.stripCount());
+  lv.apply(zc, 100);
+  lv.render(1000, wout);
+  CHECK(m1[0].r == 255 && m1[19].r == 255 && m0[0].r == 0 && m3[7].r == 0);
+  // límites: demasiadas zonas → se recorta a 32
+  StripLayout big[4] = {{300, 8}, {300, 8}, {300, 8}, {300, 9}};
+  CHECK(sanitizeLayout(big, 4) == 4 && big[3].segments == 8);
+  Command idc;
+  idc.fx = parseFx("identificar");
+  lv.apply(idc, 2000);
+  lv.render(2100, wout);
+  CHECK(idc.fx == Fx::Identify && m0[0].r == 255 && m0[0].g == 255 && m0[0].b == 255);
+
   if (failures) {
     printf("%d fallos\n", failures);
     return 1;

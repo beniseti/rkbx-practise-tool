@@ -628,3 +628,52 @@ def test_chained_buildups_use_one_prebuild_then_final_build():
     assert ev[81].fx == "build" and ev[81].params["dur_ms"] == 12500        # build final hasta el pre-drop
     assert ev[106].fx == "strobe" and ev[110].fx == "off"                   # pre-drop y apagón (3 beats)
     assert ev[113].fx is not None and ev[113].fx != "off"                   # drop en movimiento
+
+
+def test_layout_normalize_limits_and_old_format():
+    from rkbx_practice.lights.layout import StripLayout, normalize_layout, total_zones, zone_table
+    old = normalize_layout({"strips": 3, "sections_per_strip": 3, "leds_per_section": 5})
+    assert old == [StripLayout(15, 3)] * 3
+    lay = normalize_layout({"strips": [{"leds": 20, "segments": 4}, {"leds": 2, "segments": 5},
+                                       {"leds": 999, "segments": 1}, {"leds": 10, "segments": 2},
+                                       {"leds": 10, "segments": 2}]})
+    assert lay == [StripLayout(20, 4), StripLayout(2, 2), StripLayout(300, 1), StripLayout(10, 2)]
+    assert total_zones(lay) == 9
+    assert zone_table([StripLayout(14, 3)]) == [(1, 1, 1, 4), (2, 1, 2, 5), (3, 1, 3, 5)]   # como el ESP32
+    many = normalize_layout({"strips": [{"leds": 300, "segments": 8}] * 4 + [{"leds": 9, "segments": 9}]})
+    assert total_zones(many) == 32 and len(many) == 4
+
+
+def test_expand_zones_with_free_layout():
+    from rkbx_practice.lights.commands import expand_zones
+    from rkbx_practice.lights.layout import StripLayout
+    lay = [StripLayout(10, 2), StripLayout(20, 4), StripLayout(6, 3), StripLayout(8, 1)]
+    assert expand_zones("strip:2", layout=lay) == [3, 4, 5, 6]
+    assert expand_zones("section:3", layout=lay) == [5, 9]
+    assert expand_zones("odd", layout=lay) == [1, 3, 5, 7, 9]
+    assert expand_zones("all", layout=lay) == list(range(1, 11))
+
+
+def test_set_layout_saves_config_and_sends_command(library, tmp_path):
+    from rkbx_practice.config import load_config
+    from rkbx_practice.library.anlz import BeatGridCache
+    from rkbx_practice.lights.layout import StripLayout
+    from rkbx_practice.lights.manager import LightsManager
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"lights": {"events_dir": str(tmp_path / "l")}}), encoding="utf-8")
+    cfg = load_config(cfg_path)
+    sent = []
+
+    class Sender:
+        def send(self, cmd):
+            sent.append(cmd)
+            return True
+
+    mgr = LightsManager(cfg, library, BeatGridCache(), sender=Sender(), analyzer=lambda p: None)
+    assert mgr.set_layout([StripLayout(20, 4), StripLayout(14, 3)]) is True
+    assert sent[-1].fx == "layout"
+    assert json.loads(sent[-1].to_json())["strips"] == [{"leds": 20, "segments": 4}, {"leds": 14, "segments": 3}]
+    saved = json.loads(cfg_path.read_text(encoding="utf-8"))
+    assert saved["lights"]["layout"]["strips"][0] == {"leds": 20, "segments": 4}
+    assert saved["lights"]["events_dir"] == str(tmp_path / "l")          # el resto se conserva
+    assert mgr.layout == [StripLayout(20, 4), StripLayout(14, 3)]
