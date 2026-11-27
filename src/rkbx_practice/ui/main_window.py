@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import copy
 import logging
-import sys
 import time
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
@@ -910,13 +909,48 @@ class MainWindow(QMainWindow):
         self.cfg.ui.language = code
         if self.cfg.source_path is not None:
             save_value(self.cfg.source_path, ["ui", "language"], code)
-        set_language(code)          # los textos nuevos se ven al reiniciar
-        ans = QMessageBox.question(self, tr("Idioma"),
-                                   tr("El idioma se aplicará al reiniciar la ventana. ¿Reiniciar ahora?"))
-        if ans == QMessageBox.Yes:
-            from PySide6.QtCore import QProcess
-            QProcess.startDetached(sys.executable, sys.argv)
-            self.close()
+        set_language(code)
+        # Se rehace la ventana con el idioma nuevo dentro de la misma app (antes se relanzaba el
+        # programa y fallaba con «python -m rkbx_practice»). La lectura en vivo, la sesión, la
+        # grabación y las luces siguen sin cortes.
+        QTimer.singleShot(0, self.rebuild)
+
+    def rebuild(self) -> "MainWindow":
+        """Crea una ventana nueva (p. ej. con otro idioma) que toma el relevo de esta."""
+        new = MainWindow(self.cfg, self.library, self.ctl, module=self.module)
+        bridge = getattr(self, "_bridge", None)
+        if bridge is not None:
+            for sig, name in ((bridge.status_changed, "on_status"), (bridge.snapshot, "on_snapshot"),
+                              (bridge.events, "on_events")):
+                try:
+                    sig.disconnect(getattr(self, name))
+                except (RuntimeError, TypeError):
+                    pass
+                sig.connect(getattr(new, name))
+            new._bridge = bridge
+        new._last_snapshot = self._last_snapshot
+        if self.ctl._lights is not None and new.lights_page is not None:
+            new.set_lights(self.ctl._lights.engine.enabled)
+        new.conn_label.setText(self.conn_label.text())
+        new.conn_label.setToolTip(self.conn_label.toolTip())
+        if new.practice is not None:
+            if self.practice is not None:
+                new.practice.source_combo.setCurrentIndex(self.practice.source_combo.currentIndex())
+                new.practice.info_label.setText(self.practice.info_label.text())
+                new.practice._record_started = self.practice._record_started
+            new.practice.refresh_session()
+            if self.ctl.recorder.recording:
+                started = new.practice._record_started
+                new._sync_record(True)
+                new.practice._record_started = started or new.practice._record_started
+        if self.tabs.currentIndex() < new.tabs.count():
+            new.tabs.setCurrentIndex(self.tabs.currentIndex())
+        new.setGeometry(self.geometry())
+        QApplication.instance()._main_window = new     # mantener viva la ventana nueva
+        new.show()
+        self._handover = True
+        self.close()
+        return new
 
     def change_theme(self, name: str) -> None:
         """Cambia el tema al momento y lo guarda (ui.theme)."""
@@ -982,6 +1016,10 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt)
         self._closing = True
+        if getattr(self, "_handover", False):      # relevo por otra ventana: no parar nada
+            self._timer.stop()
+            super().closeEvent(event)
+            return
         if self.ctl.recorder.recording:
             path = self.ctl.stop_recording()
             log.info("Grabación guardada al cerrar: %s", path)
@@ -1011,6 +1049,7 @@ def run_ui(cfg: AppConfig, library: InMemoryLibrary, controller: PracticeControl
     bridge.snapshot.connect(win.on_snapshot)
     bridge.events.connect(win.on_events)
     win._bridge = bridge  # mantener viva la referencia
+    app._main_window = win
     ctl.start_live(bridge)
     win.show()
     return app.exec()

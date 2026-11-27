@@ -47,8 +47,6 @@ EN: dict[str, str] = {
     "Luces": "Lights",
     "Listo": "Ready",
     "Idioma": "Language",
-    "El idioma se aplicará al reiniciar la ventana. ¿Reiniciar ahora?":
-        "The language will be applied when the window restarts. Restart now?",
     "Acerca de": "About",
     "Asistente de práctica para Rekordbox: sesiones, grabación de mezclas y luces.":
         "Practice assistant for Rekordbox: sessions, mix recording and lights.",
