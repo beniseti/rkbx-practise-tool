@@ -841,7 +841,10 @@ class MainWindow(QMainWindow):
                 visible, save=self.isVisible() and not self.isMinimized() and not getattr(self, "_closing", False)))
             self.addDockWidget(Qt.RightDockWidgetArea, dock)
             self._light_dock = dock
-            self.resize(self.width() + 320, self.height())
+            # Hacer sitio al panel solo si no lo hay ya (antes se sumaban 320 px cada vez que se
+            # rehacía la ventana, p. ej. al cambiar de idioma, y la ventana crecía sin parar).
+            if self.width() < 800:
+                self.resize(800, self.height())
         if self._light_dock is not None:
             self._light_dock.setVisible(on)
         if on:
