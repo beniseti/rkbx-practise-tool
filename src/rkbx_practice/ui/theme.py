@@ -77,6 +77,20 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QProgressBar {{ background: #0c0c0c; border: 1px solid {BORDER}; border-radius: 2px; }}
 QProgressBar::chunk {{ background: {ACCENT}; }}
 QStatusBar {{ background: {PANEL_2}; color: {TEXT_DIM}; }}
+QMenuBar {{ background: {PANEL}; border-bottom: 1px solid {BORDER}; }}
+QMenuBar::item {{ padding: 4px 10px; background: transparent; }}
+QMenuBar::item:selected {{ background: {PANEL_2}; }}
+QMenu {{ background: {PANEL}; border: 1px solid {BORDER}; }}
+QMenu::item {{ padding: 5px 24px 5px 20px; }}
+QMenu::item:selected {{ background: {ACCENT}; color: #ffffff; }}
+QMenu::separator {{ height: 1px; background: {BORDER}; margin: 4px 8px; }}
+QTabWidget::pane {{ border: 1px solid {BORDER}; border-radius: 3px; top: -1px; }}
+QTabBar::tab {{ background: {PANEL}; border: 1px solid {BORDER}; padding: 5px 16px; margin-right: 2px;
+                border-top-left-radius: 3px; border-top-right-radius: 3px; }}
+QTabBar::tab:selected {{ background: {PANEL_2}; color: #ffffff; border-bottom-color: {PANEL_2}; }}
+QPushButton[role="tile"] {{ text-align: left; padding: 10px 14px; font-size: 10pt; border-radius: 6px; }}
+QPushButton[role="bigToggle"] {{ font-size: 12pt; font-weight: bold; padding: 10px; border-radius: 6px; }}
+QPushButton[role="bigToggle"]:checked {{ background: #2e7d32; border-color: #2e7d32; }}
 """
 
 

@@ -1,20 +1,31 @@
-"""Ventana de práctica (PySide6): flotante, siempre visible, redimensionable y compactable."""
+"""Ventana principal (PySide6): flotante, siempre visible, redimensionable y compactable.
+
+Pedido del usuario: menú arriba al estilo Windows, multidioma (español/inglés) y separado por
+módulos:
+
+- **Práctica**: sesión (probar las canciones: lista, sugerencias, tachado) y grabación.
+- **Luces**: activar las luces y sus herramientas (efectos por tema, mis tiras, simulador,
+  latencia). Se puede usar junto a la práctica (pestañas) o solo (`ui.module: "lights"` o
+  `ui --module lights`).
+"""
 
 from __future__ import annotations
 
 import copy
 import logging
+import sys
 import time
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor, QFont
+from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor, QFont, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog,
                                QDoubleSpinBox, QFrame, QGridLayout, QHBoxLayout, QHeaderView,
                                QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
-                               QPlainTextEdit, QProgressBar, QPushButton, QSplitter,
+                               QPlainTextEdit, QProgressBar, QPushButton, QSplitter, QTabWidget,
                                QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from . import theme
+from .i18n import LANGUAGES, language, set_language, tr
 from ..app import PracticeController
 from ..config import STRICTNESS_LEVELS, AppConfig
 from ..events import BassSwap, CutBurst, TrackLoaded, TransitionEvent
@@ -25,9 +36,9 @@ from ..state import ConnectionMode, ConnectionStatus, LiveSnapshot
 log = logging.getLogger(__name__)
 
 STRICTNESS_LABELS = {"strict": "Estricto", "moderate": "Moderado", "relaxed": "Relajado"}
-ROW_COLORS = {k: bg for k, (bg, _fg) in theme.ROW_STYLES.items()}
 MODE_COLORS = {ConnectionMode.FULL: "#4caf50", ConnectionMode.LIMITED: "#ff9800",
                ConnectionMode.DISCONNECTED: "#e53935"}
+MODULES = ("all", "practice", "lights")
 
 
 class LiveBridge(QObject):
@@ -48,10 +59,10 @@ class LiveBridge(QObject):
 
 
 def _field_grid(parent_layout: QGridLayout, row0: int, names: list[str]) -> dict[str, QLabel]:
-    """Filas «Nombre: valor» alineadas. Devuelve las etiquetas de valor."""
+    """Filas «Nombre: valor» alineadas. Devuelve las etiquetas de valor (por nombre en español)."""
     values = {}
     for i, name in enumerate(names):
-        k = QLabel(name)
+        k = QLabel(tr(name))
         k.setProperty("role", "dim")
         v = QLabel("—")
         v.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -70,7 +81,7 @@ class SuggestionPanel(QFrame):
         self.setObjectName("suggestionPanel")
         lay = QGridLayout(self)
         lay.setContentsMargins(10, 6, 10, 6)
-        self.header = QLabel("Genera una sesión para empezar")
+        self.header = QLabel(tr("Genera una sesión para empezar"))
         self.header.setObjectName("sugHeader")
         f = QFont()
         f.setPointSize(f.pointSize() + 2)
@@ -88,7 +99,7 @@ class SuggestionPanel(QFrame):
 
     def set_color(self, color: str) -> None:
         """`color` es una clave de theme.ROW_STYLES o un color de fondo."""
-        bg, fg = theme.ROW_STYLES.get(color, (color, "#ffffff"))
+        _bg, fg = theme.ROW_STYLES.get(color, (color, "#ffffff"))
         self.setStyleSheet(f"#suggestionPanel {{ background: {theme.PANEL}; border: 1px solid {theme.BORDER};"
                            f" border-left: 6px solid {fg}; border-radius: 3px; }}"
                            f" QLabel {{ color: {theme.TEXT}; }}"
@@ -133,7 +144,7 @@ class DeckWidget(QFrame):
         self.fader.setRange(0, 100)
         self.fader.setTextVisible(False)
         self.fader.setFixedHeight(6)
-        self.fader.setToolTip("Fader de canal")
+        self.fader.setToolTip(tr("Fader de canal"))
         lay.addWidget(self.fader, 3, 0, 1, 2)
 
     def update_state(self, title: str, bpm: float | None, key: str, fader: float | None,
@@ -155,7 +166,7 @@ class HistoryDialog(QDialog):
         self._open_review = open_review
         from ..history import list_sessions, load_session, summarize
         self._load, self._summarize = load_session, summarize
-        self.setWindowTitle("Histórico de sesiones")
+        self.setWindowTitle(tr("Histórico de sesiones"))
         self.resize(820, 520)
         lay = QVBoxLayout(self)
         split = QSplitter(Qt.Horizontal)
@@ -169,9 +180,9 @@ class HistoryDialog(QDialog):
         split.addWidget(self.text)
         split.setSizes([260, 560])
         lay.addWidget(split)
-        listen = QPushButton("🎧 Escuchar en el navegador")
-        listen.setToolTip("Abre la página de revisión: forma de onda de la sesión con transiciones, "
-                          "fader cuts y bass swaps; clic para escuchar desde ese punto")
+        listen = QPushButton(tr("🎧 Escuchar en el navegador"))
+        listen.setToolTip(tr("Abre la página de revisión: forma de onda de la sesión con transiciones, "
+                             "fader cuts y bass swaps; clic para escuchar desde ese punto"))
         listen.clicked.connect(self._listen)
         lay.addWidget(listen)
         for path in list_sessions(cfg.resolve_path(cfg.history.dir)):
@@ -180,7 +191,7 @@ class HistoryDialog(QDialog):
                 label = (f"{data.get('started_at', '')[:16].replace('T', ' ')}  ·  "
                          f"{data.get('source') or '—'}  ·  {len(data.get('transitions', []))} trans.")
             except Exception:  # noqa: BLE001
-                label = f"{path.name} (ilegible)"
+                label = tr("{path} (ilegible)", path=path.name)
             item = QListWidgetItem(label)
             item.setData(Qt.UserRole, str(path))
             self.list.addItem(item)
@@ -188,8 +199,8 @@ class HistoryDialog(QDialog):
         if self.list.count():
             self.list.setCurrentRow(0)
         else:
-            self.text.setPlainText("Todavía no hay sesiones grabadas.\n\n"
-                                   "Pulsa «Iniciar grabación» en la ventana principal para grabar una.")
+            self.text.setPlainText(tr("Todavía no hay sesiones grabadas.\n\n"
+                                      "Pulsa «Iniciar grabación» para grabar una."))
 
     def _listen(self) -> None:
         import webbrowser
@@ -198,7 +209,8 @@ class HistoryDialog(QDialog):
         try:
             url = self._open_review()
         except OSError as exc:
-            QMessageBox.warning(self, "Revisión", f"No se pudo abrir la página de revisión: {exc}")
+            QMessageBox.warning(self, tr("Revisión"), tr("No se pudo abrir la página de revisión: {error}",
+                                                         error=exc))
             return
         item = self.list.currentItem()
         if item is not None:
@@ -212,69 +224,24 @@ class HistoryDialog(QDialog):
         try:
             self.text.setPlainText(self._summarize(self._load(item.data(Qt.UserRole))))
         except Exception as exc:  # noqa: BLE001
-            self.text.setPlainText(f"No se pudo leer la sesión: {exc}")
+            self.text.setPlainText(tr("No se pudo leer la sesión: {error}", error=exc))
 
 
-class MainWindow(QMainWindow):
-    def __init__(self, cfg: AppConfig, library: InMemoryLibrary, controller: PracticeController):
+# ---------------------------------------------------------------------------
+# Módulo Práctica: probar las canciones (sesión) y grabación
+# ---------------------------------------------------------------------------
+class PracticePage(QWidget):
+    def __init__(self, win: "MainWindow"):
         super().__init__()
-        self.cfg = cfg
-        self.library = library
-        self.ctl = controller
-        self._last_snapshot: LiveSnapshot | None = None
-        self._compact = False
+        self.win = win
+        cfg, library = win.cfg, win.library
+        self.ctl, self.cfg, self.library = win.ctl, cfg, library
         self._record_started: float | None = None
+        self._auto_stop_msg: str | None = None
+        root = QVBoxLayout(self)
+        root.setContentsMargins(6, 6, 6, 6)
 
-        self.setWindowTitle("Práctica Rekordbox")
-        if cfg.ui.always_on_top:
-            self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
-        self.resize(460, 720)
-
-        central = QWidget()
-        root = QVBoxLayout(central)
-        root.setContentsMargins(8, 8, 8, 8)
-        self.setCentralWidget(central)
-
-        # --- cabecera: conexión, grabación, compactar -----------------
-        head = QHBoxLayout()
-        self.conn_label = QLabel("● Buscando Rekordbox…")
-        self.conn_label.setWordWrap(True)
-        self.rec_button = QPushButton("● Iniciar grabación")
-        self.rec_button.setCheckable(True)
-        self.rec_button.clicked.connect(self._toggle_recording)
-        self.compact_button = QPushButton("Compactar")
-        self.compact_button.clicked.connect(self._toggle_compact)
-        head.addWidget(self.conn_label, 1)
-        self.history_button = QPushButton("Histórico")
-        self.history_button.clicked.connect(self._show_history)
-        self.lights_check = QCheckBox("Luces")
-        esp = cfg.lights.esp32_ip
-        esp = ", ".join(esp) if isinstance(esp, list) else esp
-        self.lights_check.setToolTip(f"Enviar efectos al ESP32 ({esp}, puerto {cfg.lights.esp32_port})")
-        self.lights_check.setChecked(cfg.lights.enabled)
-        self.lights_check.toggled.connect(self.ctl.set_lights_enabled)
-        self.lights_button = QPushButton("Efectos…")
-        self.lights_button.clicked.connect(self._show_lights_editor)
-        self.latency_button = QPushButton("Latencia…")
-        self.latency_button.setToolTip("Calibrar el retraso de las luces con un metrónomo")
-        self.latency_button.clicked.connect(self._show_latency)
-        self.layout_button = QPushButton("Mis tiras…")
-        self.layout_button.setToolTip("Cuántas tiras de luz tienes, cuántas luces y en cuántas partes se dividen")
-        self.layout_button.clicked.connect(self._show_layout)
-        self.sim_button = QPushButton("Simulador")
-        self.sim_button.setToolTip("Abre el simulador de luces en el navegador (hace de ESP32)")
-        self.sim_button.clicked.connect(self._open_simulator)
-        head.addWidget(self.rec_button)
-        head.addWidget(self.lights_check)
-        head.addWidget(self.lights_button)
-        head.addWidget(self.sim_button)
-        head.addWidget(self.latency_button)
-        head.addWidget(self.layout_button)
-        head.addWidget(self.history_button)
-        head.addWidget(self.compact_button)
-        root.addLayout(head)
-
-        # --- selector de carpeta/playlist y ajustes -------------------
+        # --- selector de carpeta/playlist, ajustes y grabación ----------
         self.settings_box = QWidget()
         sl = QGridLayout(self.settings_box)
         sl.setContentsMargins(0, 0, 0, 0)
@@ -283,18 +250,18 @@ class MainWindow(QMainWindow):
             for depth, node in r.walk():
                 prefix = "    " * depth + ("📁 " if node.kind == NodeKind.FOLDER else "")
                 self.source_combo.addItem(prefix + node.name, node.id)
-        self.generate_button = QPushButton("Generar sesión")
-        self.generate_button.clicked.connect(self._generate)
+        self.generate_button = QPushButton(tr("Generar sesión"))
+        self.generate_button.clicked.connect(self.generate)
         self.tolerance = QDoubleSpinBox()
         self.tolerance.setRange(0.5, 20.0)
         self.tolerance.setSingleStep(0.5)
-        self.tolerance.setSuffix(" % BPM")
+        self.tolerance.setSuffix(tr(" % BPM"))
         self.tolerance.setValue(cfg.session.bpm_tolerance_pct)
-        self.camelot_check = QCheckBox("Camelot")
+        self.camelot_check = QCheckBox(tr("Camelot"))
         self.camelot_check.setChecked(cfg.session.camelot_enabled)
         self.strictness = QComboBox()
         for s in STRICTNESS_LEVELS:
-            self.strictness.addItem(STRICTNESS_LABELS[s], s)
+            self.strictness.addItem(tr(STRICTNESS_LABELS[s]), s)
         self.strictness.setCurrentIndex(STRICTNESS_LEVELS.index(cfg.session.camelot_strictness))
         self.camelot_check.toggled.connect(self.strictness.setEnabled)
         self.strictness.setEnabled(cfg.session.camelot_enabled)
@@ -305,13 +272,18 @@ class MainWindow(QMainWindow):
         sl.addWidget(self.strictness, 1, 2)
         root.addWidget(self.settings_box)
 
-        # --- sugerencia -----------------------------------------------
+        rec_row = QHBoxLayout()
+        self.rec_button = QPushButton(tr("● Iniciar grabación"))
+        self.rec_button.setCheckable(True)
+        self.rec_button.clicked.connect(win.set_recording)
+        rec_row.addWidget(self.rec_button, 1)
+        root.addLayout(rec_row)
+
+        # --- sugerencia y lista ------------------------------------------
         self.suggestion = SuggestionPanel()
         root.addWidget(self.suggestion)
-
-        # --- lista de la sesión ---------------------------------------
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["#", "Tema", "BPM", "Camelot"])
+        self.table.setHorizontalHeaderLabels(["#", tr("Tema"), tr("BPM"), tr("Camelot")])
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setShowGrid(False)
@@ -324,19 +296,15 @@ class MainWindow(QMainWindow):
         hh.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.table.cellClicked.connect(self._row_clicked)
-        self.table.setToolTip("Verde: cargado (clic para destachar) · Amarillo: siguiente · "
-                              "Naranja: comodín · Rojo: te lo saltaste")
+        self.table.setToolTip(tr("Verde: cargado (clic para destachar) · Amarillo: siguiente · "
+                                 "Naranja: comodín · Rojo: te lo saltaste"))
         root.addWidget(self.table, 1)
-        self.lights_status = QLabel("")
-        self.lights_status.setProperty("role", "dim")
-        self.lights_status.setWordWrap(True)
         self.info_label = QLabel("")
         self.info_label.setWordWrap(True)
         self.info_label.setStyleSheet("color: #ff9800;")
         root.addWidget(self.info_label)
-        root.addWidget(self.lights_status)
 
-        # --- decks ----------------------------------------------------
+        # --- decks -------------------------------------------------------
         decks_box = QWidget()
         dl = QGridLayout(decks_box)
         dl.setContentsMargins(0, 0, 0, 0)
@@ -347,17 +315,10 @@ class MainWindow(QMainWindow):
             dl.addWidget(w, (n - 1) // 2, (n - 1) % 2)
         root.addWidget(decks_box)
 
-        self.statusBar().showMessage("Listo")
+    def status(self, msg: str, ms: int = 4000) -> None:
+        self.win.statusBar().showMessage(msg, ms)
 
-        # Refresco de decks a ~10 Hz (el sondeo va a 50 Hz).
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._refresh_decks)
-        self._timer.start(100)
-
-        if cfg.ui.start_compact:
-            self._toggle_compact()
-
-    # --- sesión -------------------------------------------------------
+    # --- sesión ----------------------------------------------------------
     def _current_settings(self):
         s = copy.deepcopy(self.cfg.session)
         s.bpm_tolerance_pct = float(self.tolerance.value())
@@ -365,18 +326,18 @@ class MainWindow(QMainWindow):
         s.camelot_strictness = self.strictness.currentData()
         return s
 
-    def _generate(self) -> None:
+    def generate(self) -> None:
         node_id = self.source_combo.currentData()
         if node_id is None:
             return
         if self.ctl.session is not None and self.ctl.session.struck:
-            ans = QMessageBox.question(self, "Nueva sesión",
-                                       "Se perderá el tachado de la sesión actual. ¿Continuar?")
+            ans = QMessageBox.question(self, tr("Nueva sesión"),
+                                       tr("Se perderá el tachado de la sesión actual. ¿Continuar?"))
             if ans != QMessageBox.Yes:
                 return
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
-            loaded, loaded_deck = self._currently_loaded()
+            loaded, loaded_deck = self.win.currently_loaded()
             session = self.ctl.generate(node_id, self._current_settings(),
                                         loaded=loaded, loaded_deck=loaded_deck)
         finally:
@@ -384,27 +345,13 @@ class MainWindow(QMainWindow):
         if session.excluded:
             names = ", ".join(t.display for t, _ in session.excluded[:5])
             more = "…" if len(session.excluded) > 5 else ""
-            self.info_label.setText(f"{len(session.excluded)} tema(s) sin analizar (sin BPM o tonalidad) "
-                                    f"excluidos: {names}{more}")
+            self.info_label.setText(tr("{n} tema(s) sin analizar (sin BPM o tonalidad) excluidos: {names}",
+                                       n=len(session.excluded), names=names + more))
         else:
             self.info_label.setText("")
-        self._refresh_session()
+        self.refresh_session()
 
-    def _currently_loaded(self):
-        """Tema que está sonando (deck master; si no, el de fader más alto)."""
-        snap = self._last_snapshot
-        if snap is None:
-            return None, None
-        decks = [d for d in snap.decks if d.track_id and self.library.track(d.track_id)]
-        if not decks:
-            return None, None
-        # El que suena: master si se sabe; si no, el de fader más alto entre los que reproducen.
-        playing = [x for x in decks if x.playing is not False] or decks
-        d = next((x for x in playing if x.is_master), None) or max(
-            playing, key=lambda x: (x.playing is True, x.fader or 0.0))
-        return self.library.track(d.track_id), d.deck
-
-    def _refresh_session(self) -> None:
+    def refresh_session(self) -> None:
         s = self.ctl.session
         if s is None:
             self.table.setRowCount(0)
@@ -460,15 +407,15 @@ class MainWindow(QMainWindow):
         s = self.ctl.session
         if s is None:
             self.suggestion.set_color("next")
-            self.suggestion.show_message("Genera una sesión para empezar")
+            self.suggestion.show_message(tr("Genera una sesión para empezar"))
             return
         sug = s.suggestion
         if sug is None:
             self.suggestion.set_color("loaded")
-            self.suggestion.show_message("¡Sesión completada!")
+            self.suggestion.show_message(tr("¡Sesión completada!"))
             return
         t = sug.track
-        header = "🃏 COMODÍN (fuera de orden, compatible)" if sug.is_wildcard else "Siguiente"
+        header = tr("🃏 COMODÍN (fuera de orden, compatible)") if sug.is_wildcard else tr("Siguiente")
         key = t.camelot_str
         if sug.from_anchor is not None and sug.from_anchor.key is not None:
             key += f"  ({sug.from_anchor.key.label_es})"
@@ -483,160 +430,367 @@ class MainWindow(QMainWindow):
         tid = item.data(Qt.UserRole)
         if s.is_struck(tid):
             s.unstrike(tid)
-            self.statusBar().showMessage(f"Destachado: {item.text()}", 4000)
-            self._refresh_session()
+            self.status(tr("Destachado: {title}", title=item.text()))
+            self.refresh_session()
 
-    # --- en vivo ------------------------------------------------------
-    def on_status(self, status: ConnectionStatus) -> None:
-        color = MODE_COLORS[status.mode]
-        version = f" {status.version}" if status.version else ""
-        self.conn_label.setText(f"<span style='color:{color}'>●</span> Rekordbox{version} — "
-                                f"{status.mode.label_es}")
-        self.conn_label.setToolTip(status.message)
-        if status.message:
-            self.statusBar().showMessage(status.message, 8000)
-
-    def on_snapshot(self, snap: LiveSnapshot) -> None:
-        self._last_snapshot = snap
-
+    # --- en vivo -----------------------------------------------------------
     def on_events(self, events) -> None:
         unknown = self.ctl.apply_events(events)
         loaded = [e for e in events if isinstance(e, TrackLoaded)]
         if loaded:
-            self._refresh_session()
+            self.refresh_session()
             s = self.ctl.session
             for ev in loaded:
                 t = self.library.track(ev.track_id) if ev.track_id else None
                 if t is None:
                     continue
                 if s is not None and s.contains(t.id):
-                    msg = f"Deck {ev.deck}: tachado «{t.display}»"
+                    msg = tr("Deck {deck}: tachado «{title}»", deck=ev.deck, title=t.display)
                 else:
-                    msg = f"Deck {ev.deck}: «{t.display}» no está en la sesión (no se tacha)"
-                self.statusBar().showMessage(msg, 6000)
+                    msg = tr("Deck {deck}: «{title}» no está en la sesión (no se tacha)",
+                             deck=ev.deck, title=t.display)
+                self.status(msg, 6000)
         for ev in unknown:
-            self.statusBar().showMessage(
-                f"Deck {ev.deck}: tema no encontrado en master.db ({ev.track_path})", 8000)
+            self.status(tr("Deck {deck}: tema no encontrado en master.db ({path})",
+                           deck=ev.deck, path=ev.track_path), 8000)
         for ev in events:
             if isinstance(ev, TransitionEvent):
-                self.statusBar().showMessage(
-                    f"Transición {ev.out_deck}→{ev.in_deck} ({ev.duration_s:.1f} s)", 5000)
+                self.status(tr("Transición {a}→{b} ({s:.1f} s)", a=ev.out_deck, b=ev.in_deck,
+                               s=ev.duration_s), 5000)
             elif isinstance(ev, CutBurst):
-                self.statusBar().showMessage(f"Fader cuts en deck {ev.deck}: {ev.count}", 4000)
+                self.status(tr("Fader cuts en deck {deck}: {n}", deck=ev.deck, n=ev.count))
             elif isinstance(ev, BassSwap):
-                self.statusBar().showMessage(f"Bass swap {ev.from_deck}→{ev.to_deck}", 4000)
+                self.status(tr("Bass swap {a}→{b}", a=ev.from_deck, b=ev.to_deck))
 
-    def _refresh_decks(self) -> None:
-        snap = self._last_snapshot
+    def refresh(self, snap: LiveSnapshot | None) -> None:
         if snap is not None:
             for d in snap.decks:
                 w = self.deck_widgets.get(d.deck)
                 if w is None:
                     continue
                 t = self.library.track(d.track_id) if d.track_id else None
-                title = t.display if t else ("(no está en la biblioteca)" if d.track_path else "—")
+                title = t.display if t else (tr("(no está en la biblioteca)") if d.track_path else "—")
                 w.update_state(title, d.bpm, t.camelot_str if t else "—", d.fader, d.is_master)
-        lights = self.ctl._lights
-        if lights is not None:
-            status = lights.engine.status
-            snap_ = self._last_snapshot
-            lead = lights.engine.lead_deck
-            if snap_ is not None and lead is not None:
-                d_ = snap_.deck(lead)
-                if d_ is not None and d_.track_id in lights.problems:
-                    status = f"Deck {lead}: sin luces: {lights.problems[d_.track_id]}"
-            describe = getattr(lights.sender, "describe", None)
-            status += f" · enviados {lights.sender.sent} a " + (describe() if describe else "")
-            if lights.sender.errors:
-                status += f" · {lights.sender.errors} errores de envío"
-            self.lights_check.setToolTip(status)
-            self.lights_status.setText(status if lights.engine.enabled else "")
-        if lights is not None and lights.engine.enabled and lights.engine.last_sent is not None:
-            ev, t_sent = lights.engine.last_sent
-            if t_sent != getattr(self, "_last_light_shown", None):
-                self._last_light_shown = t_sent
-                self.statusBar().showMessage(f"Luces: {ev.label} → {ev.fx}", 3000)
-        if self.ctl.recorder.recording and self.ctl.audio_auto_stopped:
-            mins = self.cfg.audio.auto_stop_silence_s / 60
-            self._auto_stop_msg = (f"Grabación parada sola: {mins:g} min sin sonido "
-                                   "(cortada donde dejó de sonar)")
-            self.rec_button.setChecked(False)
-            self._toggle_recording(False)               # guarda la sesión (cortada)
-        if self.ctl.recorder.recording and self._record_started is not None:
-            c = self.ctl.recorder.counts()
-            secs = int(time.monotonic() - self._record_started)
-            self.rec_button.setText(f"■ Parar grabación {secs // 60:02d}:{secs % 60:02d}")
-            audio = self.ctl.audio
-            if audio is None:
-                a_txt = "audio desactivado (audio.enabled)"
-            elif audio.error:
-                a_txt = f"SIN AUDIO: {audio.error}"
-            elif audio.level_db is None or audio.started_wall is None:
-                a_txt = "audio: esperando a que suene algo (aún no se graba)"
-            elif audio.silence_s >= 10:
-                left = max(0, self.cfg.audio.auto_stop_silence_s - audio.silence_s)
-                a_txt = f"audio: {audio.silence_s:.0f} s sin sonido (se para sola en {left:.0f} s)"
-            else:
-                a_txt = f"audio {audio.level_db:.0f} dB" + (" (silencio)" if audio.level_db < -60 else "")
-            self.rec_button.setToolTip(f"Temas {c.get('tracks', 0)} · transiciones "
-                                       f"{c.get('transitions', 0)} · cuts {c.get('fader_cuts', 0)} · "
-                                       f"bass swaps {c.get('bass_swaps', 0)} · {a_txt}")
-            if audio is not None and audio.error:
-                self.rec_button.setText(f"■ Parar grabación {secs // 60:02d}:{secs % 60:02d} (sin audio)")
+        self._refresh_recording()
 
-    # --- grabación y compactar ---------------------------------------
-    def _toggle_recording(self, checked: bool) -> None:
-        if checked:
-            self.ctl.start_recording()
+    # --- grabación -----------------------------------------------------------
+    def _refresh_recording(self) -> None:
+        if self.ctl.recorder.recording and self.ctl.audio_auto_stopped:
+            self._auto_stop_msg = tr("Grabación parada sola: {mins:g} min sin sonido "
+                                     "(cortada donde dejó de sonar)",
+                                     mins=self.cfg.audio.auto_stop_silence_s / 60)
+            self.win.set_recording(False)               # guarda la sesión (cortada)
+            return
+        if not (self.ctl.recorder.recording and self._record_started is not None):
+            return
+        c = self.ctl.recorder.counts()
+        secs = int(time.monotonic() - self._record_started)
+        clock = f"{secs // 60:02d}:{secs % 60:02d}"
+        audio = self.ctl.audio
+        if audio is None:
+            a_txt = tr("audio desactivado (audio.enabled)")
+        elif audio.error:
+            a_txt = tr("SIN AUDIO: {error}", error=audio.error)
+        elif audio.level_db is None or audio.started_wall is None:
+            a_txt = tr("audio: esperando a que suene algo (aún no se graba)")
+        elif audio.silence_s >= 10:
+            left = max(0, self.cfg.audio.auto_stop_silence_s - audio.silence_s)
+            a_txt = tr("audio: {s:.0f} s sin sonido (se para sola en {left:.0f} s)", s=audio.silence_s,
+                       left=left)
+        else:
+            a_txt = tr("audio {db:.0f} dB", db=audio.level_db) + (tr(" (silencio)") if audio.level_db < -60 else "")
+        no_audio = audio is not None and audio.error
+        self.rec_button.setText(tr("■ Parar grabación {t} (sin audio)" if no_audio else "■ Parar grabación {t}",
+                                   t=clock))
+        self.rec_button.setToolTip(tr("Temas {tracks} · transiciones {tr} · cuts {cuts} · bass swaps {swaps} · {audio}",
+                                      tracks=c.get("tracks", 0), tr=c.get("transitions", 0),
+                                      cuts=c.get("fader_cuts", 0), swaps=c.get("bass_swaps", 0), audio=a_txt))
+
+    def recording_changed(self, on: bool) -> None:
+        """Lo llama la ventana al empezar o parar la grabación."""
+        self.rec_button.blockSignals(True)
+        self.rec_button.setChecked(on)
+        self.rec_button.blockSignals(False)
+        if on:
             self._record_started = time.monotonic()
             audio = self.ctl.audio
             if audio is not None and audio.error:
-                self.statusBar().showMessage(f"Grabando sesión SIN AUDIO: {audio.error}", 15000)
+                self.status(tr("Grabando sesión SIN AUDIO: {error}", error=audio.error), 15000)
             elif audio is not None:
-                self.statusBar().showMessage(f"Grabando sesión y audio ({audio.device_name})…", 5000)
+                self.status(tr("Grabando sesión y audio ({device})…", device=audio.device_name), 5000)
             else:
-                self.statusBar().showMessage("Grabando sesión…", 3000)
+                self.status(tr("Grabando sesión…"), 3000)
+        else:
+            self._record_started = None
+            self.rec_button.setText(tr("● Iniciar grabación"))
+            self.rec_button.setToolTip("")
+
+    def saved(self, path) -> None:
+        msg, self._auto_stop_msg = self._auto_stop_msg, None
+        if path:
+            self.status((msg + " · " if msg else "") + tr("Sesión guardada en {path}", path=path),
+                        20000 if msg else 10000)
+
+    def set_compact(self, compact: bool) -> None:
+        for w in (self.settings_box, self.table, self.info_label):
+            w.setVisible(not compact)
+
+
+# ---------------------------------------------------------------------------
+# Módulo Luces (puede usarse solo, sin la práctica)
+# ---------------------------------------------------------------------------
+class LightsPage(QWidget):
+    def __init__(self, win: "MainWindow"):
+        super().__init__()
+        self.win = win
+        self.ctl = win.ctl
+        root = QVBoxLayout(self)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(10)
+
+        self.toggle = QPushButton()
+        self.toggle.setProperty("role", "bigToggle")
+        self.toggle.setCheckable(True)
+        self.toggle.clicked.connect(win.set_lights)
+        root.addWidget(self.toggle)
+        hint = QLabel(tr("Las luces siguen la música que suena en Rekordbox."))
+        hint.setProperty("role", "dim")
+        hint.setWordWrap(True)
+        root.addWidget(hint)
+
+        box = QFrame()
+        box.setObjectName("deckPanel")
+        grid = QGridLayout(box)
+        self.fields = _field_grid(grid, 0, ["Ahora", "Último efecto", "Destino"])
+        for v in self.fields.values():
+            v.setWordWrap(True)
+        root.addWidget(box)
+
+        tiles = QGridLayout()
+        tiles.setSpacing(8)
+        items = [
+            ("🎚  " + tr("Efectos por tema"), tr("Mira y cambia qué efecto sale en cada parte de una canción."),
+             win.show_lights_editor),
+            ("💡  " + tr("Mis tiras"), tr("Cuántas tiras tienes, sus luces y en cuántas partes se dividen."),
+             win.show_layout),
+            ("🖥  " + tr("Simulador"), tr("Ver las luces en el navegador, sin el ESP32."), win.open_simulator),
+            ("⏱  " + tr("Latencia"), tr("Ajustar el retraso para que las luces vayan con el bombo."),
+             win.show_latency),
+        ]
+        for i, (title, desc, fn) in enumerate(items):
+            b = QPushButton(f"{title}\n{desc}")
+            b.setProperty("role", "tile")
+            b.setMinimumHeight(58)
+            b.clicked.connect(fn)
+            tiles.addWidget(b, i // 2, i % 2)
+        root.addLayout(tiles)
+        root.addStretch(1)
+        self.set_enabled_state(win.cfg.lights.enabled)
+
+    def set_enabled_state(self, on: bool) -> None:
+        self.toggle.blockSignals(True)
+        self.toggle.setChecked(on)
+        self.toggle.blockSignals(False)
+        self.toggle.setText(("💡  " + tr("Luces encendidas") + "  ·  " + tr("Apagar luces")) if on
+                            else ("○  " + tr("Luces apagadas") + "  ·  " + tr("Encender luces")))
+
+    def refresh(self, snap: LiveSnapshot | None) -> None:
+        lights = self.ctl._lights
+        if lights is None:
+            return
+        eng = lights.engine
+        status = eng.status
+        lead = eng.lead_deck
+        if snap is not None and lead is not None:
+            d = snap.deck(lead)
+            if d is not None:
+                t = self.win.library.track(d.track_id) if d.track_id else None
+                if d.track_id in lights.problems:
+                    status = tr("Deck {deck}: sin luces: {why}", deck=lead, why=lights.problems[d.track_id])
+                elif t is not None:
+                    status = tr("Deck {deck}", deck=lead) + f": {t.display}\n{status}"
+        self.fields["Ahora"].setText(status if eng.enabled else "—")
+        if eng.last_sent is not None:
+            ev, _t = eng.last_sent
+            self.fields["Último efecto"].setText(f"{ev.label} → {ev.fx}")
+        describe = getattr(lights.sender, "describe", None)
+        dest = tr("enviados {n} a {dest}", n=lights.sender.sent, dest=describe() if describe else "")
+        if lights.sender.errors:
+            dest += " · " + tr("{n} errores de envío", n=lights.sender.errors)
+        self.fields["Destino"].setText(dest)
+
+
+# ---------------------------------------------------------------------------
+class MainWindow(QMainWindow):
+    def __init__(self, cfg: AppConfig, library: InMemoryLibrary, controller: PracticeController,
+                 module: str | None = None):
+        super().__init__()
+        self.cfg = cfg
+        self.library = library
+        self.ctl = controller
+        self.module = module if module in MODULES else (cfg.ui.module if cfg.ui.module in MODULES else "all")
+        self._last_snapshot: LiveSnapshot | None = None
+        self._compact = False
+
+        self.setWindowTitle(tr("Práctica Rekordbox") if self.module != "lights" else "Rekordbox — " + tr("Luces"))
+        if cfg.ui.always_on_top:
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        self.resize(480, 760)
+
+        central = QWidget()
+        root = QVBoxLayout(central)
+        root.setContentsMargins(8, 6, 8, 8)
+        self.setCentralWidget(central)
+        self.conn_label = QLabel(tr("● Buscando Rekordbox…"))
+        self.conn_label.setWordWrap(True)
+        root.addWidget(self.conn_label)
+
+        self.practice = PracticePage(self) if self.module in ("all", "practice") else None
+        self.lights_page = LightsPage(self) if self.module in ("all", "lights") else None
+        self.tabs = QTabWidget()
+        if self.practice is not None:
+            self.tabs.addTab(self.practice, "🎧  " + tr("Práctica"))
+        if self.lights_page is not None:
+            self.tabs.addTab(self.lights_page, "💡  " + tr("Luces"))
+        self.tabs.tabBar().setVisible(self.tabs.count() > 1)
+        root.addWidget(self.tabs, 1)
+
+        self._build_menu()
+        self.statusBar().showMessage(tr("Listo"))
+        if cfg.lights.enabled or self.module == "lights":
+            self.set_lights(True)
+
+        # Refresco a ~10 Hz (el sondeo va a 50 Hz).
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._refresh)
+        self._timer.start(100)
+        if cfg.ui.start_compact:
+            self.toggle_compact()
+
+    # --- menú ------------------------------------------------------------------
+    def _action(self, menu, text: str, slot=None, shortcut: str | None = None, checkable: bool = False,
+                tip: str | None = None) -> QAction:
+        act = QAction(tr(text), self)
+        if shortcut:
+            act.setShortcut(QKeySequence(shortcut))
+        act.setCheckable(checkable)
+        if tip:
+            act.setStatusTip(tr(tip))
+        if slot is not None:
+            act.triggered.connect(slot)
+        menu.addAction(act)
+        return act
+
+    def _build_menu(self) -> None:
+        mb = self.menuBar()
+        m = mb.addMenu(tr("&Archivo"))
+        self._action(m, "&Salir", self.close, "Ctrl+Q")
+
+        if self.practice is not None:
+            m = mb.addMenu(tr("&Práctica"))
+            self._action(m, "&Generar sesión", self.practice.generate, "Ctrl+G")
+            self.act_record = self._action(m, "Iniciar / parar &grabación", self.set_recording, "Ctrl+R",
+                                           checkable=True)
+            m.addSeparator()
+            self._action(m, "&Histórico…", self.show_history, "Ctrl+H")
+            self._action(m, "&Escuchar grabaciones (navegador)", self.open_review)
+        else:
+            self.act_record = None
+
+        if self.lights_page is not None:
+            m = mb.addMenu(tr("&Luces"))
+            self.act_lights = self._action(m, "&Activar luces", self.set_lights, "Ctrl+L", checkable=True)
+            m.addSeparator()
+            self._action(m, "&Efectos por tema…", self.show_lights_editor, "Ctrl+E")
+            self._action(m, "&Mis tiras…", self.show_layout)
+            self._action(m, "&Simulador (navegador)", self.open_simulator)
+            self._action(m, "&Latencia…", self.show_latency)
+        else:
+            self.act_lights = None
+
+        m = mb.addMenu(tr("&Ver"))
+        if self.tabs.count() > 1:
+            self._action(m, "Módulo &Práctica", lambda: self.tabs.setCurrentWidget(self.practice), "Ctrl+1")
+            self._action(m, "Módulo &Luces", lambda: self.tabs.setCurrentWidget(self.lights_page), "Ctrl+2")
+            m.addSeparator()
+        self.act_compact = self._action(m, "&Compactar", self.toggle_compact, "Ctrl+M", checkable=True)
+        top = self._action(m, "Siempre &visible", self.set_always_on_top, checkable=True)
+        top.setChecked(self.cfg.ui.always_on_top)
+
+        m = mb.addMenu(tr("&Idioma"))
+        group = QActionGroup(self)
+        for code, name in LANGUAGES.items():
+            act = QAction(name, self, checkable=True)
+            act.setChecked(code == language())
+            act.triggered.connect(lambda _c=False, code=code: self.change_language(code))
+            group.addAction(act)
+            m.addAction(act)
+
+        m = mb.addMenu(tr("Ay&uda"))
+        self._action(m, "&Acerca de…", self.about)
+
+    # --- acciones ---------------------------------------------------------------
+    def set_recording(self, on: bool) -> None:
+        if self.practice is None or on == self.ctl.recorder.recording:
+            self._sync_record(self.ctl.recorder.recording)
+            return
+        if on:
+            self.ctl.start_recording()
+            self._sync_record(True)
         else:
             path = self.ctl.stop_recording()
-            self._record_started = None
-            self.rec_button.setText("● Iniciar grabación")
-            msg = getattr(self, "_auto_stop_msg", None)
-            self._auto_stop_msg = None
-            if path:
-                self.statusBar().showMessage(f"{msg + ' · ' if msg else ''}Sesión guardada en {path}",
-                                             20000 if msg else 10000)
+            self._sync_record(False)
+            self.practice.saved(path)
 
-    def _toggle_compact(self) -> None:
-        self._compact = not self._compact
-        for w in (self.settings_box, self.table, self.info_label):
-            w.setVisible(not self._compact)
-        self.compact_button.setText("Ampliar" if self._compact else "Compactar")
-        if self._compact:
-            self.resize(self.width(), self.minimumSizeHint().height())
+    def _sync_record(self, on: bool) -> None:
+        if self.act_record is not None:
+            self.act_record.blockSignals(True)
+            self.act_record.setChecked(on)
+            self.act_record.blockSignals(False)
+        if self.practice is not None:
+            self.practice.recording_changed(on)
 
-    def _show_layout(self) -> None:
+    def set_lights(self, on: bool) -> None:
+        self.ctl.set_lights_enabled(on)
+        if self.act_lights is not None:
+            self.act_lights.blockSignals(True)
+            self.act_lights.setChecked(on)
+            self.act_lights.blockSignals(False)
+        if self.lights_page is not None:
+            self.lights_page.set_enabled_state(on)
+
+    def show_history(self) -> None:
+        HistoryDialog(self.cfg, self, open_review=self.ctl.open_review).exec()
+
+    def open_review(self) -> None:
+        import webbrowser
+        try:
+            webbrowser.open(self.ctl.open_review())
+        except OSError as exc:
+            QMessageBox.warning(self, tr("Revisión"), tr("No se pudo abrir la página de revisión: {error}",
+                                                         error=exc))
+
+    def show_layout(self) -> None:
         from .layout_dialog import LayoutDialog
         LayoutDialog(self.ctl, self).exec()
 
-    def _show_latency(self) -> None:
+    def show_latency(self) -> None:
         from .lights_editor import LatencyDialog
         LatencyDialog(self.ctl, self).exec()
 
-    def _open_simulator(self) -> None:
+    def open_simulator(self) -> None:
         import webbrowser
         try:
             url = self.ctl.lights.start_simulator()
         except OSError as exc:
-            QMessageBox.warning(self, "Simulador", f"No se pudo abrir el simulador: {exc}\n"
-                                "¿Hay otro simulador en marcha (python -m rkbx_practice lights simulate)?")
+            QMessageBox.warning(self, tr("Simulador"), tr("No se pudo abrir el simulador: {error}", error=exc))
             return
         webbrowser.open(url)
-        if not self.lights_check.isChecked():
-            self.lights_check.setChecked(True)     # abrir el simulador sin luces no sirve de nada
-        extra = " (ya estaba abierto: se usa ese)" if self.ctl.lights.external_simulator else ""
-        self.statusBar().showMessage(f"Simulador en {url}{extra} · luces activadas", 8000)
+        self.set_lights(True)                       # abrir el simulador sin luces no sirve de nada
+        extra = tr(" (ya estaba abierto: se usa ese)") if self.ctl.lights.external_simulator else ""
+        self.statusBar().showMessage(tr("Simulador en {url}{extra} · luces activadas", url=url, extra=extra), 8000)
 
-    def _show_lights_editor(self) -> None:
+    def show_lights_editor(self) -> None:
         from .lights_editor import LightsEditor
         tracks, seen = [], set()
         snap = self._last_snapshot
@@ -645,15 +799,16 @@ class MainWindow(QMainWindow):
                 t = self.library.track(d.track_id) if d.track_id else None
                 if t is not None and t.id not in seen:
                     seen.add(t.id)
-                    tracks.append((f"Deck {d.deck}: {t.display}", t))
+                    tracks.append((tr("Deck {deck}", deck=d.deck) + f": {t.display}", t))
         if self.ctl.session is not None:
             for t, _ in self.ctl.session.entries():
                 if t.id not in seen:
                     seen.add(t.id)
                     tracks.append((t.display, t))
         if not tracks:
-            QMessageBox.information(self, "Luces", "Carga un tema en un deck o genera una sesión primero.")
+            QMessageBox.information(self, tr("Luces"), tr("Carga un tema en un deck o genera una sesión primero."))
             return
+
         def positions():
             snap = self._last_snapshot
             if snap is None:
@@ -663,8 +818,84 @@ class MainWindow(QMainWindow):
 
         LightsEditor(self.ctl, tracks, self, position_provider=positions).exec()
 
-    def _show_history(self) -> None:
-        HistoryDialog(self.cfg, self, open_review=self.ctl.open_review).exec()
+    def toggle_compact(self) -> None:
+        self._compact = not self._compact
+        self.act_compact.blockSignals(True)
+        self.act_compact.setChecked(self._compact)
+        self.act_compact.blockSignals(False)
+        if self.practice is not None:
+            self.practice.set_compact(self._compact)
+        self.tabs.tabBar().setVisible(self.tabs.count() > 1 and not self._compact)
+        if self._compact:
+            self.resize(self.width(), self.minimumSizeHint().height())
+
+    def set_always_on_top(self, on: bool) -> None:
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, on)
+        self.show()
+
+    def change_language(self, code: str) -> None:
+        if code == language():
+            return
+        from ..config import save_value
+        self.cfg.ui.language = code
+        if self.cfg.source_path is not None:
+            save_value(self.cfg.source_path, ["ui", "language"], code)
+        set_language(code)          # los textos nuevos se ven al reiniciar
+        ans = QMessageBox.question(self, tr("Idioma"),
+                                   tr("El idioma se aplicará al reiniciar la ventana. ¿Reiniciar ahora?"))
+        if ans == QMessageBox.Yes:
+            from PySide6.QtCore import QProcess
+            QProcess.startDetached(sys.executable, sys.argv)
+            self.close()
+
+    def about(self) -> None:
+        QMessageBox.about(self, tr("Acerca de"), "rkbx-practise-tool\n\n" +
+                          tr("Asistente de práctica para Rekordbox: sesiones, grabación de mezclas y luces."))
+
+    # --- en vivo -----------------------------------------------------------------
+    def currently_loaded(self):
+        """Tema que está sonando (deck master; si no, el de fader más alto)."""
+        snap = self._last_snapshot
+        if snap is None:
+            return None, None
+        decks = [d for d in snap.decks if d.track_id and self.library.track(d.track_id)]
+        if not decks:
+            return None, None
+        playing = [x for x in decks if x.playing is not False] or decks
+        d = next((x for x in playing if x.is_master), None) or max(
+            playing, key=lambda x: (x.playing is True, x.fader or 0.0))
+        return self.library.track(d.track_id), d.deck
+
+    def on_status(self, status: ConnectionStatus) -> None:
+        color = MODE_COLORS[status.mode]
+        version = f" {status.version}" if status.version else ""
+        self.conn_label.setText(f"<span style='color:{color}'>●</span> " +
+                                tr("Rekordbox{version} — {mode}", version=version, mode=tr(status.mode.label_es)))
+        self.conn_label.setToolTip(status.message)
+        if status.message:
+            self.statusBar().showMessage(status.message, 8000)
+
+    def on_snapshot(self, snap: LiveSnapshot) -> None:
+        self._last_snapshot = snap
+
+    def on_events(self, events) -> None:
+        if self.practice is not None:
+            self.practice.on_events(events)
+        else:
+            self.ctl.apply_events(events)
+
+    def _refresh(self) -> None:
+        snap = self._last_snapshot
+        if self.practice is not None:
+            self.practice.refresh(snap)
+        if self.lights_page is not None:
+            self.lights_page.refresh(snap)
+        lights = self.ctl._lights
+        if lights is not None and lights.engine.enabled and lights.engine.last_sent is not None:
+            ev, t_sent = lights.engine.last_sent
+            if t_sent != getattr(self, "_last_light_shown", None):
+                self._last_light_shown = t_sent
+                self.statusBar().showMessage(tr("Luces: {label} → {fx}", label=ev.label, fx=ev.fx), 3000)
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt)
         if self.ctl.recorder.recording:
@@ -676,13 +907,15 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
-def run_ui(cfg: AppConfig, library: InMemoryLibrary, controller: PracticeController | None = None) -> int:
+def run_ui(cfg: AppConfig, library: InMemoryLibrary, controller: PracticeController | None = None,
+           module: str | None = None) -> int:
+    set_language(cfg.ui.language)
     app = QApplication.instance() or QApplication([])
     if cfg.ui.theme == "rekordbox":
         app.setStyle("Fusion")
         app.setStyleSheet(theme.QSS)
     ctl = controller or PracticeController(cfg, library)
-    win = MainWindow(cfg, library, ctl)
+    win = MainWindow(cfg, library, ctl, module=module)
     bridge = LiveBridge()
     bridge.status_changed.connect(win.on_status)
     bridge.snapshot.connect(win.on_snapshot)

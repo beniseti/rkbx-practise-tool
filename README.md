@@ -57,8 +57,9 @@ python -m rkbx_practice session "Techno" --tolerance 6 --strictness relaxed --se
 python -m rkbx_practice offsets
 python -m rkbx_practice live --session "Techno/Warmup" --record
 
-# Ventana de práctica
+# Ventana (módulos Práctica y Luces; menú arriba; idioma en el menú Idioma)
 python -m rkbx_practice ui
+python -m rkbx_practice ui --module luces     # solo el módulo de luces
 
 # Histórico
 python -m rkbx_practice history list

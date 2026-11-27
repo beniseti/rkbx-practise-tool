@@ -162,7 +162,7 @@ Claves añadidas durante la implementación:
 - `detection.on_beat_tolerance_ms`: tolerancia para considerar un fader cut "a tiempo".
 - `detection.bass_swap_bar_tolerance_beats`: tolerancia (en beats) para considerar que un bass swap cae en inicio de compás/frase.
 - `detection.default_bpm`: BPM supuesto si un deck no informa BPM (para convertir beats a segundos).
-- `ui.always_on_top`, `ui.start_compact`, `ui.theme` (`rekordbox` o `system`).
+- `ui.always_on_top`, `ui.start_compact`, `ui.theme` (`rekordbox` o `system`), `ui.language` (`es`/`en`), `ui.module` (`all`/`practice`/`lights`).
 - `audio.*`: `enabled`, `device` (parte del nombre; `null` = salida predeterminada), `loopback` (salida o entrada), `sample_rate`, `channels`, `format` (`flac`/`wav`/`ogg`), `block_ms`, `peaks_per_s`, `auto_stop_silence_s` (300), `silence_threshold_db` (−50), `review_http_port` (8766).
 
 Los valores de umbral son puntos de partida; se ajustarán probando con el usuario.
@@ -272,6 +272,8 @@ Implementación:
 - Indicador de conexión con Rekordbox, versión detectada y modo (completo / limitado).
 - Botón **Iniciar / Parar grabación** de sesión.
 - Ventana siempre visible encima de Rekordbox; que se pueda redimensionar y compactar.
+
+**Menú y módulos (pedido del usuario):** menú arriba al estilo Windows (Archivo · Práctica · Luces · Ver · Idioma · Ayuda, con atajos: Ctrl+G generar, Ctrl+R grabar, Ctrl+H histórico, Ctrl+L luces, Ctrl+E efectos, Ctrl+1/2 módulos, Ctrl+M compactar) y la ventana separada en **módulos** con pestañas: **Práctica** (probar las canciones: sesión, lista, sugerencia, decks, y la **grabación**; `PracticePage`) y **Luces** (botón grande encender/apagar, «Ahora / Último efecto / Destino», y botones grandes para Efectos por tema, Mis tiras, Simulador y Latencia; `LightsPage`). El módulo de luces **puede usarse solo** (decisión del usuario: pestañas + abrir solo): `ui.module` en config.json (`all`, `practice`, `lights`) o `python -m rkbx_practice ui --module luces`. **Multidioma (español e inglés, decisión del usuario):** `ui/i18n.py` con `tr()` (texto en español como clave, diccionario `EN`; sin traducción → español), menú Idioma guarda `ui.language` y ofrece reiniciar la ventana para aplicarlo; un test comprueba que todo texto con `tr()` tiene traducción y los mismos `{parámetros}`. Quedan en español los mensajes de diagnóstico del motor de luces, los resúmenes del histórico y las páginas del navegador (revisión y simulador).
 
 Implementación: `ui/main_window.py`. Estilo oscuro inspirado en Rekordbox (`ui/theme.py`, `ui.theme: "rekordbox"`; `"system"` para el estilo normal de Windows): número de deck en azul, MASTER en naranja, BPM grande, claves coloreadas según la rueda Camelot; sugerencia y decks con campos Tema / BPM / Clave. Colores de la lista (pedidos por el usuario, en tonos oscuros): **verde** = cargado (y tachado), **amarillo** = siguiente sugerencia (naranja si es comodín), **rojo** = sugerencia que se saltó (cargó otro en su lugar; sigue disponible y pasa a verde si luego se carga). El bucle de sondeo corre en un hilo y pasa los datos a la UI con señales Qt; la sesión solo se modifica en el hilo de la UI. Ajustes rápidos en la ventana: tolerancia de BPM, Camelot sí/no y exigencia. `--demo` simula los decks para probar la ventana sin Rekordbox. Botón **Histórico**: lista las sesiones grabadas y muestra el resumen (transiciones, cada ráfaga de cortes con ✓/✗ por corte y desfase medio, cada bass swap con compás/frase).
 

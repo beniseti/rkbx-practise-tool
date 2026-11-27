@@ -107,6 +107,8 @@ class UiConfig:
     always_on_top: bool = True
     start_compact: bool = False
     theme: str = "rekordbox"   # "rekordbox" (oscuro) o "system"
+    language: str = "es"       # "es" o "en" (menú Idioma)
+    module: str = "all"        # módulo al abrir: "all" (pestañas), "practice" o "lights" (solo luces)
 
 
 @dataclass

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QComboBox, QDialog, QFrame, QHB
                                QMessageBox, QPushButton, QScrollArea, QSpinBox, QToolButton, QVBoxLayout,
                                QWidget)
 
+from .i18n import tr
 from ..lights.layout import (MAX_LEDS, MAX_SEGMENTS, MAX_STRIPS, MAX_ZONES, SAFE_PINS, StripLayout,
                              needs_restart, normalize_layout)
 
@@ -96,7 +97,7 @@ class StripView(QWidget):
         self.leds, self.segments, self.first_zone, self.scale_leds = 14, 3, 1, 14
         self.setMinimumHeight(58)
         self.setCursor(Qt.PointingHandCursor)
-        self.setToolTip("Clic en una parte para encenderla en las luces")
+        self.setToolTip(tr("Clic en una parte para encenderla en las luces"))
         self._rects: list[tuple[QRectF, int]] = []
 
     def set_data(self, leds: int, segments: int, first_zone: int, scale_leds: int) -> None:
@@ -173,18 +174,18 @@ class StripCard(QFrame):
         self.title.setStyleSheet("font-size:15px; font-weight:bold;")
         top.addWidget(self.title)
         top.addStretch(1)
-        self.leds = Stepper("Puntos de luz", strip.leds, 1, MAX_LEDS,
-                            "Cuántas luces se pueden encender por separado.\n"
-                            "En tiras de 12 V (WS2811), cuenta cada grupo de 3 LEDs como 1.")
-        self.parts = Stepper("Partes", strip.segments, 1, MAX_SEGMENTS,
-                             "En cuántos trozos iguales se divide la tira.\n"
-                             "Cada trozo puede tener su propio efecto.")
+        self.leds = Stepper(tr("Puntos de luz"), strip.leds, 1, MAX_LEDS,
+                            tr("Cuántas luces se pueden encender por separado.\n"
+                               "En tiras de 12 V (WS2811), cuenta cada grupo de 3 LEDs como 1."))
+        self.parts = Stepper(tr("Partes"), strip.segments, 1, MAX_SEGMENTS,
+                             tr("En cuántos trozos iguales se divide la tira.\n"
+                                "Cada trozo puede tener su propio efecto."))
         top.addWidget(self.leds)
         top.addSpacing(14)
         top.addWidget(self.parts)
         self.delete = QToolButton()
         self.delete.setText("✕")
-        self.delete.setToolTip("Quitar esta tira")
+        self.delete.setToolTip(tr("Quitar esta tira"))
         self.delete.setFixedSize(30, 30)
         top.addSpacing(8)
         top.addWidget(self.delete)
@@ -193,13 +194,13 @@ class StripCard(QFrame):
         lay.addWidget(self.view)
         bottom = QHBoxLayout()
         bottom.addStretch(1)
-        pin_label = QLabel("Cable de datos en el pin")
+        pin_label = QLabel(tr("Cable de datos en el pin"))
         pin_label.setStyleSheet("color:#9aa0a6;")
         self.pin = QComboBox()
         for p in SAFE_PINS:
             self.pin.addItem(f"{p}", p)
-        self.pin.setToolTip("Pin del ESP32 al que va el cable de datos de esta tira.\n"
-                            "Se elige una vez al montarla; si lo cambias, las luces se reinician un momento.")
+        self.pin.setToolTip(tr("Pin del ESP32 al que va el cable de datos de esta tira.\n"
+                               "Se elige una vez al montarla; si lo cambias, las luces se reinician un momento."))
         if strip.pin in SAFE_PINS:
             self.pin.setCurrentIndex(SAFE_PINS.index(strip.pin))
         self.pin.currentIndexChanged.connect(lambda _i: self.changed.emit())
@@ -220,22 +221,22 @@ class StripCard(QFrame):
         for i, p in enumerate(SAFE_PINS):
             item = model.item(i)
             item.setEnabled(p not in taken)
-            self.pin.setItemText(i, f"{p}" + ("  (otra tira)" if p in taken else ""))
+            self.pin.setItemText(i, f"{p}" + (tr("  (otra tira)") if p in taken else ""))
 
 
 class LayoutDialog(QDialog):
     def __init__(self, ctl, parent=None):
         super().__init__(parent)
         self.ctl = ctl
-        self.setWindowTitle("Mis luces")
+        self.setWindowTitle(tr("Mis luces"))
         self.resize(760, 560)
         root = QVBoxLayout(self)
-        head = QLabel("Tus tiras de luz")
+        head = QLabel(tr("Tus tiras de luz"))
         head.setStyleSheet("font-size:18px; font-weight:bold;")
         root.addWidget(head)
-        sub = QLabel("Añade tus tiras (hasta 8) y dile cuántas luces tiene cada una y en cuántas partes la "
-                     "quieres dividir. Cada parte de color puede tener su propio efecto. "
-                     "Toca una parte para verla encenderse.")
+        sub = QLabel(tr("Añade tus tiras (hasta 8) y dile cuántas luces tiene cada una y en cuántas partes la "
+                        "quieres dividir. Cada parte de color puede tener su propio efecto. "
+                        "Toca una parte para verla encenderse."))
         sub.setWordWrap(True)
         sub.setStyleSheet("color:#9aa0a6;")
         root.addWidget(sub)
@@ -246,7 +247,7 @@ class LayoutDialog(QDialog):
         inner = QVBoxLayout(holder)
         inner.setContentsMargins(0, 0, 0, 0)
         inner.addLayout(self.cards_box)
-        self.add_btn = QPushButton("＋  Añadir tira")
+        self.add_btn = QPushButton(tr("＋  Añadir tira"))
         self.add_btn.setMinimumHeight(46)
         self.add_btn.setStyleSheet("QPushButton { border:2px dashed #495057; border-radius:10px; "
                                    "font-size:15px; color:#ced4da; background:transparent; } "
@@ -266,15 +267,15 @@ class LayoutDialog(QDialog):
         root.addWidget(self.summary)
 
         btns = QHBoxLayout()
-        test = QPushButton("✨  Probar en las luces")
-        test.setToolTip("Cada parte se enciende de su color en las luces de verdad (y en el simulador)")
+        test = QPushButton(tr("✨  Probar en las luces"))
+        test.setToolTip(tr("Cada parte se enciende de su color en las luces de verdad (y en el simulador)"))
         test.clicked.connect(self._identify)
-        save = QPushButton("Guardar")
+        save = QPushButton(tr("Guardar"))
         save.setDefault(True)
         save.setStyleSheet("QPushButton { background:#ff8a1f; color:#111; font-weight:bold; "
                            "padding:6px 22px; border-radius:6px; }")
         save.clicked.connect(self._save)
-        cancel = QPushButton("Cancelar")
+        cancel = QPushButton(tr("Cancelar"))
         cancel.clicked.connect(self.reject)
         btns.addWidget(test)
         btns.addStretch(1)
@@ -324,7 +325,7 @@ class LayoutDialog(QDialog):
         used = sum(c.parts.value() for c in self.cards)
         pins = [c.pin.currentData() for c in self.cards]
         for i, c in enumerate(self.cards, start=1):
-            c.title.setText(f"Tira {i}")
+            c.title.setText(tr("Tira {n}", n=i))
             c.set_taken_pins({p for k, p in enumerate(pins) if k != i - 1})
             # no más partes que luces ni más de 32 partes en total
             room = MAX_ZONES - (used - c.parts.value())
@@ -334,9 +335,10 @@ class LayoutDialog(QDialog):
             zone += c.parts.value()
         n = len(self.cards)
         self.add_btn.setEnabled(n < MAX_STRIPS)
-        self.add_btn.setText("＋  Añadir tira" if n < MAX_STRIPS else f"Máximo {MAX_STRIPS} tiras")
+        self.add_btn.setText(tr("＋  Añadir tira") if n < MAX_STRIPS else tr("Máximo {n} tiras", n=MAX_STRIPS))
         parts = zone - 1
-        self.summary.setText(f"{n} {'tira' if n == 1 else 'tiras'} · {parts} partes con efecto propio")
+        self.summary.setText(tr("{n} tira · {parts} partes con efecto propio" if n == 1
+                                else "{n} tiras · {parts} partes con efecto propio", n=n, parts=parts))
 
     def reject(self) -> None:  # Cancelar: las luces vuelven al montaje guardado
         if self.ctl.lights.layout != self._original:
@@ -368,11 +370,11 @@ class LayoutDialog(QDialog):
             {"strips": [{"leds": s.leds, "segments": s.segments, "pin": s.pin} for s in self.strips()]}))
         ok = self.ctl.lights.set_layout(self.strips(), save=True)
         if not ok:
-            QMessageBox.information(self, "Mis luces",
-                                    "Guardado. Las luces no han respondido (¿están encendidas y en la "
-                                    "misma Wi-Fi?); se les enviará al activar «Luces».")
+            QMessageBox.information(self, tr("Mis luces"),
+                                    tr("Guardado. Las luces no han respondido (¿están encendidas y en la "
+                                       "misma Wi-Fi?); se les enviará al activar «Luces»."))
         elif restart:
-            QMessageBox.information(self, "Mis luces",
-                                    "Guardado. Como has cambiado pines o el número de tiras, las luces "
-                                    "se reinician un momento para usarlos.")
+            QMessageBox.information(self, tr("Mis luces"),
+                                    tr("Guardado. Como has cambiado pines o el número de tiras, las luces "
+                                       "se reinician un momento para usarlos."))
         self.accept()

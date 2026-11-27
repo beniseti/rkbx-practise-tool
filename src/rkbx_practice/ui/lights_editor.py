@@ -10,11 +10,12 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QHBoxLayou
 
 from . import theme
 
+from .i18n import tr
 from ..library.models import Track
 from ..lights.commands import LightCommand, format_params, parse_params, resolve_live
 from ..lights.show import LightEvent, LightShow
 
-NO_FX = "(ninguno)"
+NO_FX = tr("(ninguno)")
 
 # Colores de las frases (inspirados en los de Rekordbox).
 PHRASE_COLORS = {
@@ -87,7 +88,7 @@ class TimelineWidget(QWidget):
         p.fillRect(self.rect(), QColor(theme.PANEL))
         if not self.analysis or not self._n():
             p.setPen(QColor(theme.TEXT_DIM))
-            p.drawText(self.rect(), Qt.AlignCenter, "Sin análisis")
+            p.drawText(self.rect(), Qt.AlignCenter, tr("Sin análisis"))
             return
         n = self._n()
         top, bottom = self.MARGIN, self.height() - self.MARGIN
@@ -209,7 +210,7 @@ class TimelineWidget(QWidget):
 
 
 class LightsEditor(QDialog):
-    COLS = ["Compás", "Tiempo", "Sección", "Efecto", "Parámetros", ""]
+    COLS = [tr("Compás"), tr("Tiempo"), tr("Sección"), tr("Efecto"), tr("Parámetros"), ""]
 
     def __init__(self, controller, tracks: list[tuple[str, Track]], parent=None, position_provider=None):
         """`tracks`: [(texto para el desplegable, tema)], el primero es el que suena.
@@ -222,7 +223,7 @@ class LightsEditor(QDialog):
         self.analysis = None
         self.track: Track | None = None
         self.position_provider = position_provider
-        self.setWindowTitle("Efectos de luces")
+        self.setWindowTitle(tr("Efectos de luces"))
         self.resize(900, 640)
         lay = QVBoxLayout(self)
 
@@ -231,7 +232,7 @@ class LightsEditor(QDialog):
         for label, t in tracks:
             self.track_combo.addItem(label, t.id)
         self.track_combo.currentIndexChanged.connect(self._load_selected)
-        top.addWidget(QLabel("Tema:"))
+        top.addWidget(QLabel(tr("Tema:")))
         top.addWidget(self.track_combo, 1)
         lay.addLayout(top)
 
@@ -268,14 +269,14 @@ class LightsEditor(QDialog):
         bottom = QHBoxLayout()
         self.bar_spin = QSpinBox()
         self.bar_spin.setRange(1, 9999)
-        self.bar_spin.setPrefix("compás ")
-        add = QPushButton("Añadir")
+        self.bar_spin.setPrefix(tr("compás "))
+        add = QPushButton(tr("Añadir"))
         add.clicked.connect(self._add_event)
-        remove = QPushButton("Quitar")
+        remove = QPushButton(tr("Quitar"))
         remove.clicked.connect(self._remove_selected)
-        regen = QPushButton("Regenerar desde el análisis")
+        regen = QPushButton(tr("Regenerar desde el análisis"))
         regen.clicked.connect(self._regenerate)
-        save = QPushButton("Guardar")
+        save = QPushButton(tr("Guardar"))
         save.setDefault(True)
         save.clicked.connect(self._save)
         for w in (self.bar_spin, add, remove):
@@ -302,7 +303,7 @@ class LightsEditor(QDialog):
         self.analysis = self.mgr.analyze(track)
         self.show = self.mgr.load_or_generate(track)
         if self.show is None:
-            self.info.setText("Sin análisis de Rekordbox para este tema (¿está analizado?).")
+            self.info.setText(tr("Sin análisis de Rekordbox para este tema (¿está analizado?)."))
             self.table.setRowCount(0)
             self.timeline.set_data(None, [])
             return
@@ -316,7 +317,7 @@ class LightsEditor(QDialog):
                               f"{roles.count('breakdown')} breakdowns) · {src} · "
                               f"archivo: {self.mgr.store.path(track.id)}")
         else:
-            self.info.setText(f"archivo: {self.mgr.store.path(track.id)}")
+            self.info.setText(tr("archivo: {path}", path=self.mgr.store.path(track.id)))
         self._fill()
 
     # --- línea de tiempo ------------------------------------------------
@@ -384,7 +385,7 @@ class LightsEditor(QDialog):
             combo.currentTextChanged.connect(lambda name, p=params: self._fx_changed(name, p))
             self.table.setCellWidget(row, 3, combo)
             self.table.setCellWidget(row, 4, params)
-            test = QPushButton("Probar")
+            test = QPushButton(tr("Probar"))
             test.clicked.connect(lambda _=False, r=row: self._test_row(r))
             self.table.setCellWidget(row, 5, test)
             combo.currentTextChanged.connect(lambda _t: self._refresh_timeline())
@@ -421,7 +422,7 @@ class LightsEditor(QDialog):
                     beat = i + 1
                     break
         if beat is None:
-            QMessageBox.information(self, "Luces", "Ese compás no existe en el tema.")
+            QMessageBox.information(self, tr("Luces"), tr("Ese compás no existe en el tema."))
             return
         self.show.events = self._collect() + [LightEvent(beat, "manual", "manual", "flash",
                                                          dict(self.effects.get("flash", {})))]
@@ -438,8 +439,8 @@ class LightsEditor(QDialog):
     def _regenerate(self) -> None:
         if self.track is None:
             return
-        if QMessageBox.question(self, "Luces", "Se perderán los cambios hechos a mano en este tema. "
-                                "¿Regenerar desde el análisis?") != QMessageBox.Yes:
+        if QMessageBox.question(self, tr("Luces"), tr("Se perderán los cambios hechos a mano en este tema. "
+                                   "¿Regenerar desde el análisis?")) != QMessageBox.Yes:
             return
         show = self.mgr.generate(self.track, self.analysis)
         if show is not None:
@@ -455,7 +456,7 @@ class LightsEditor(QDialog):
             bpm = self.track.bpm
         cmd = LightCommand(fx, resolve_live(parse_params(self.table.cellWidget(row, 4).text()), bpm or 128.0))
         ok = self.mgr.sender.send(cmd)
-        self.info.setText(("Enviado: " if ok else "NO enviado (¿conectado a la Wi-Fi del ESP32?): ")
+        self.info.setText((tr("Enviado: ") if ok else tr("NO enviado (¿conectado a la Wi-Fi del ESP32?): "))
                           + cmd.to_json().decode())
 
     def _save(self) -> None:
@@ -463,7 +464,7 @@ class LightsEditor(QDialog):
             return
         self.show.events = self._collect()
         path = self.mgr.save(self.show)
-        self.info.setText(f"Guardado en {path}")
+        self.info.setText(tr("Guardado en {path}", path=path))
 
 
 class LatencyDialog(QDialog):
@@ -475,16 +476,16 @@ class LatencyDialog(QDialog):
         self.ctl = controller
         self.engine = controller.lights.engine
         self.cfg = controller.cfg
-        self.setWindowTitle("Calibrar latencia de las luces")
+        self.setWindowTitle(tr("Calibrar latencia de las luces"))
         lay = QVBoxLayout(self)
-        help_ = QLabel(
+        help_ = QLabel(tr(
             "1. Pon un tema con bombo claro a sonar (fader arriba) y marca «Metrónomo».\n"
             "2. Las luces darán un destello en cada beat. Mira las luces reales (ESP32) mientras escuchas.\n"
             "3. Si el destello llega DESPUÉS del bombo, sube la latencia; si llega ANTES, bájala.\n"
-            "4. Guarda cuando coincidan.")
+            "4. Guarda cuando coincidan."))
         help_.setWordWrap(True)
         lay.addWidget(help_)
-        self.metro = QCheckBox("Metrónomo (destello en cada beat; silencia los efectos del tema)")
+        self.metro = QCheckBox(tr("Metrónomo (destello en cada beat; silencia los efectos del tema)"))
         self.metro.setChecked(self.engine.metronome)
         self.metro.toggled.connect(self._toggle)
         lay.addWidget(self.metro)
@@ -499,7 +500,7 @@ class LatencyDialog(QDialog):
             b = QPushButton(f"{delta}")
             b.clicked.connect(lambda _=False, d=delta: self.spin.setValue(self.spin.value() + d))
             row.addWidget(b)
-        row.addWidget(QLabel("Adelanto:"))
+        row.addWidget(QLabel(tr("Adelanto:")))
         row.addWidget(self.spin)
         for delta in (5, 20):
             b = QPushButton(f"+{delta}")
@@ -511,9 +512,9 @@ class LatencyDialog(QDialog):
         self.status.setWordWrap(True)
         lay.addWidget(self.status)
         buttons = QHBoxLayout()
-        save = QPushButton("Guardar en config.json")
+        save = QPushButton(tr("Guardar en config.json"))
         save.clicked.connect(self._save)
-        close = QPushButton("Cerrar")
+        close = QPushButton(tr("Cerrar"))
         close.clicked.connect(self.accept)
         buttons.addStretch(1)
         buttons.addWidget(save)
@@ -535,7 +536,7 @@ class LatencyDialog(QDialog):
         from ..config import DEFAULT_CONFIG_PATH, save_value
         path = self.cfg.source_path or DEFAULT_CONFIG_PATH
         save_value(path, ["lights", "latency_compensation_ms"], int(self.spin.value()))
-        self.status.setText(f"Guardado: {self.spin.value()} ms en {path}")
+        self.status.setText(tr("Guardado: {ms} ms en {path}", ms=self.spin.value(), path=path))
 
     def done(self, r: int) -> None:  # noqa: D401  (al cerrar, apagar el metrónomo)
         self.engine.metronome = False

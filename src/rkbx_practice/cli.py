@@ -236,7 +236,9 @@ def cmd_ui(cfg, args) -> int:
     ctl = PracticeController(cfg, lib)
     if args.demo:
         ctl.use_demo_source()
-    return run_ui(cfg, lib, ctl)
+    module = {"practica": "practice", "práctica": "practice", "luces": "lights", "todo": "all"}.get(
+        (args.module or "").lower(), args.module)
+    return run_ui(cfg, lib, ctl, module=module)
 
 
 def cmd_history_list(cfg, args) -> int:
@@ -562,7 +564,10 @@ def build_parser() -> argparse.ArgumentParser:
     session_opts(sp)
     sp.set_defaults(func=cmd_live)
 
-    sub.add_parser("ui", help="Abre la ventana de práctica").set_defaults(func=cmd_ui)
+    sp = sub.add_parser("ui", help="Abre la ventana (módulos Práctica y Luces)")
+    sp.add_argument("--module", choices=["all", "practice", "lights", "todo", "practica", "luces"],
+                    help="Abrir solo un módulo (por defecto ui.module de config.json: all)")
+    sp.set_defaults(func=cmd_ui)
 
     h = sub.add_parser("history", help="Sesiones grabadas").add_subparsers(dest="sub", required=True)
     h.add_parser("list").set_defaults(func=cmd_history_list)

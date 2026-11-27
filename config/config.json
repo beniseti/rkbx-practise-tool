@@ -67,7 +67,9 @@
   "ui": {
     "always_on_top": true,
     "start_compact": false,
-    "theme": "rekordbox"
+    "theme": "rekordbox",
+    "language": "es",
+    "module": "all"
   },
   "lights": {
     "enabled": false,
