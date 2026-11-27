@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
-from PySide6.QtWidgets import (QDialog, QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton,
-                               QScrollArea, QToolButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractSpinBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
+                               QMessageBox, QPushButton, QScrollArea, QSpinBox, QToolButton, QVBoxLayout,
+                               QWidget)
 
-from ..lights.layout import MAX_LEDS, MAX_SEGMENTS, MAX_STRIPS, MAX_ZONES, StripLayout
+from ..lights.layout import (MAX_LEDS, MAX_SEGMENTS, MAX_STRIPS, MAX_ZONES, SAFE_PINS, StripLayout,
+                             needs_restart, normalize_layout)
 
 PART_COLORS = ["#ff5c5c", "#ffa94d", "#ffd43b", "#69db7c", "#38d9a9", "#4dabf7", "#748ffc", "#da77f2"]
 
@@ -41,10 +43,13 @@ class Stepper(QWidget):
             b.setFixedSize(30, 30)
             b.setAutoRepeat(True)
             b.setStyleSheet("font-size:16px; font-weight:bold;")
-        self.label = QLabel()
-        self.label.setMinimumWidth(34)
+        self.label = QSpinBox()                 # se puede escribir el número directamente
+        self.label.setRange(lo, hi)
+        self.label.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.label.setAlignment(Qt.AlignCenter)
+        self.label.setMinimumWidth(46)
         self.label.setStyleSheet("font-size:16px; font-weight:bold;")
+        self.label.valueChanged.connect(self.set_value)
         self.minus.clicked.connect(lambda: self.set_value(self._value - 1))
         self.plus.clicked.connect(lambda: self.set_value(self._value + 1))
         lay.addWidget(t)
@@ -73,7 +78,10 @@ class Stepper(QWidget):
         self._sync()
 
     def _sync(self) -> None:
-        self.label.setText(str(self._value))
+        self.label.blockSignals(True)
+        self.label.setMaximum(self.hi)
+        self.label.setValue(self._value)
+        self.label.blockSignals(False)
         self.minus.setEnabled(self._value > self.lo)
         self.plus.setEnabled(self._value < self.hi)
 
@@ -155,6 +163,7 @@ class StripCard(QFrame):
 
     def __init__(self, strip: StripLayout, parent=None):
         super().__init__(parent)
+        self._pin = strip.pin
         self.setObjectName("card")
         self.setStyleSheet("#card { background:#1b1e24; border:1px solid #2f343d; border-radius:10px; }")
         lay = QVBoxLayout(self)
@@ -182,13 +191,36 @@ class StripCard(QFrame):
         lay.addLayout(top)
         self.view = StripView()
         lay.addWidget(self.view)
+        bottom = QHBoxLayout()
+        bottom.addStretch(1)
+        pin_label = QLabel("Cable de datos en el pin")
+        pin_label.setStyleSheet("color:#9aa0a6;")
+        self.pin = QComboBox()
+        for p in SAFE_PINS:
+            self.pin.addItem(f"{p}", p)
+        self.pin.setToolTip("Pin del ESP32 al que va el cable de datos de esta tira.\n"
+                            "Se elige una vez al montarla; si lo cambias, las luces se reinician un momento.")
+        if strip.pin in SAFE_PINS:
+            self.pin.setCurrentIndex(SAFE_PINS.index(strip.pin))
+        self.pin.currentIndexChanged.connect(lambda _i: self.changed.emit())
+        bottom.addWidget(pin_label)
+        bottom.addWidget(self.pin)
+        lay.addLayout(bottom)
         self.leds.changed.connect(lambda _v: self.changed.emit())
         self.parts.changed.connect(lambda _v: self.changed.emit())
         self.delete.clicked.connect(lambda: self.removed.emit(self))
         self.view.part_clicked.connect(self.part_clicked.emit)
 
     def strip(self) -> StripLayout:
-        return StripLayout(self.leds.value(), self.parts.value())
+        return StripLayout(self.leds.value(), self.parts.value(), self.pin.currentData())
+
+    def set_taken_pins(self, taken: set[int]) -> None:
+        """Pines que usan otras tiras: se ven en gris y no se pueden elegir."""
+        model = self.pin.model()
+        for i, p in enumerate(SAFE_PINS):
+            item = model.item(i)
+            item.setEnabled(p not in taken)
+            self.pin.setItemText(i, f"{p}" + ("  (otra tira)" if p in taken else ""))
 
 
 class LayoutDialog(QDialog):
@@ -201,8 +233,8 @@ class LayoutDialog(QDialog):
         head = QLabel("Tus tiras de luz")
         head.setStyleSheet("font-size:18px; font-weight:bold;")
         root.addWidget(head)
-        sub = QLabel("Añade tus tiras y dile cuántas luces tiene cada una y en cuántas partes la quieres "
-                     "dividir. Cada parte de color puede tener su propio efecto. "
+        sub = QLabel("Añade tus tiras (hasta 8) y dile cuántas luces tiene cada una y en cuántas partes la "
+                     "quieres dividir. Cada parte de color puede tener su propio efecto. "
                      "Toca una parte para verla encenderse.")
         sub.setWordWrap(True)
         sub.setStyleSheet("color:#9aa0a6;")
@@ -251,6 +283,7 @@ class LayoutDialog(QDialog):
         root.addLayout(btns)
 
         self.cards: list[StripCard] = []
+        self._original = list(ctl.lights.layout)     # para deshacer las pruebas si se cancela
         for s in ctl.lights.layout:
             self._add_card(s)
         self._refresh()
@@ -266,7 +299,12 @@ class LayoutDialog(QDialog):
 
     def _add(self) -> None:
         if len(self.cards) < MAX_STRIPS:
-            self._add_card(self.cards[-1].strip() if self.cards else StripLayout(14, 3))
+            last = self.cards[-1].strip() if self.cards else StripLayout(14, 3)
+            # pin: el de fábrica de esa posición (o el primero libre)
+            new = normalize_layout({"strips": [{"leds": s.leds, "segments": s.segments, "pin": s.pin}
+                                               for s in self.strips()]
+                                    + [{"leds": last.leds, "segments": last.segments}]})[-1]
+            self._add_card(new)
             self._refresh()
 
     def _remove(self, card: StripCard) -> None:
@@ -284,8 +322,10 @@ class LayoutDialog(QDialog):
         scale = max(c.leds.value() for c in self.cards)
         zone = 1
         used = sum(c.parts.value() for c in self.cards)
+        pins = [c.pin.currentData() for c in self.cards]
         for i, c in enumerate(self.cards, start=1):
             c.title.setText(f"Tira {i}")
+            c.set_taken_pins({p for k, p in enumerate(pins) if k != i - 1})
             # no más partes que luces ni más de 32 partes en total
             room = MAX_ZONES - (used - c.parts.value())
             c.parts.set_max(min(MAX_SEGMENTS, c.leds.value(), room))
@@ -298,9 +338,19 @@ class LayoutDialog(QDialog):
         parts = zone - 1
         self.summary.setText(f"{n} {'tira' if n == 1 else 'tiras'} · {parts} partes con efecto propio")
 
+    def reject(self) -> None:  # Cancelar: las luces vuelven al montaje guardado
+        if self.ctl.lights.layout != self._original:
+            self.ctl.lights.set_layout(self._original, save=False)
+        super().reject()
+
     # --- en las luces -----------------------------------------------------------
     def _send_layout(self) -> None:
-        self.ctl.lights.set_layout(self.strips(), save=False)
+        # Probar no reinicia las luces: si cambian pines o nº de tiras, se prueba con lo que hay
+        # hasta pulsar «Guardar».
+        new = normalize_layout({"strips": [{"leds": s.leds, "segments": s.segments, "pin": s.pin}
+                                           for s in self.strips()]})
+        if not needs_restart(self.ctl.lights.layout, new):
+            self.ctl.lights.set_layout(self.strips(), save=False)
 
     def _flash_part(self, zone: int) -> None:
         from ..lights.commands import LightCommand
@@ -314,9 +364,15 @@ class LayoutDialog(QDialog):
         self.ctl.lights.sender.send(LightCommand("identify", {"dur_ms": 8000}))
 
     def _save(self) -> None:
+        restart = needs_restart(self.ctl.lights.layout, normalize_layout(
+            {"strips": [{"leds": s.leds, "segments": s.segments, "pin": s.pin} for s in self.strips()]}))
         ok = self.ctl.lights.set_layout(self.strips(), save=True)
         if not ok:
             QMessageBox.information(self, "Mis luces",
                                     "Guardado. Las luces no han respondido (¿están encendidas y en la "
                                     "misma Wi-Fi?); se les enviará al activar «Luces».")
+        elif restart:
+            QMessageBox.information(self, "Mis luces",
+                                    "Guardado. Como has cambiado pines o el número de tiras, las luces "
+                                    "se reinician un momento para usarlos.")
         self.accept()

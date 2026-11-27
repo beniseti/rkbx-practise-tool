@@ -12,8 +12,8 @@ Por defecto al puerto 4210 de `rkbx-luces.local` (ESP32 en la Wi-Fi de casa, mDN
 ## Montaje y zonas
 
 El montaje se cambia sin reprogramar (ventana **Mis tiras…** de la app, `lights.layout` en
-`config/config.json`): hasta **4 tiras** (canales: GPIO 25, 26, 27 y 14), cada una con sus
-**píxeles** (hasta 300) y **segmentos** (hasta 8; como mucho 32 zonas en total). Cada segmento es
+`config/config.json`): hasta **8 tiras**, cada una con su **pin** (elegible: 4, 13, 14, 16-19,
+21-23, 25-27, 32, 33), sus **píxeles** (hasta 1000) y **segmentos** (hasta 8; como mucho 64 zonas). Cada segmento es
 una **zona**; se numeran tira a tira. Ejemplo con 3 tiras × 3 segmentos:
 
 | | Segmento 1 | Segmento 2 | Segmento 3 |
@@ -40,7 +40,7 @@ Los segmentos se reparten los píxeles de su tira a partes iguales (14 píxeles 
 
 | `fx` | Parámetros | Qué hace |
 |---|---|---|
-| `layout` | `strips`: `[{"leds": 14, "segments": 3}, …]` | Cambia el montaje, lo guarda en la memoria del ESP32 (se recuerda al reiniciar) y reinicia los efectos. La app lo envía al activar «Luces» y al guardar el montaje |
+| `layout` | `strips`: `[{"leds": 14, "segments": 3, "pin": 25}, …]` | Cambia el montaje y lo guarda en la memoria del ESP32 (se recuerda al reiniciar). Píxeles y segmentos se aplican al momento; si cambian los pines o el número de tiras, el ESP32 se reinicia (≈1 s) para usarlos. La app lo envía al activar «Luces» y al guardar el montaje |
 | `identify` | `dur_ms` | Cada zona parpadea con su color y su primer píxel en blanco, para ver qué número tiene cada una |
 
 Cada zona tiene su propio estado: un comando solo cambia las zonas a las que va.

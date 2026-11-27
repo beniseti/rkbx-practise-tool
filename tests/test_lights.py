@@ -633,15 +633,29 @@ def test_chained_buildups_use_one_prebuild_then_final_build():
 def test_layout_normalize_limits_and_old_format():
     from rkbx_practice.lights.layout import StripLayout, normalize_layout, total_zones, zone_table
     old = normalize_layout({"strips": 3, "sections_per_strip": 3, "leds_per_section": 5})
-    assert old == [StripLayout(15, 3)] * 3
+    assert old == [StripLayout(15, 3, 25), StripLayout(15, 3, 26), StripLayout(15, 3, 27)]
     lay = normalize_layout({"strips": [{"leds": 20, "segments": 4}, {"leds": 2, "segments": 5},
-                                       {"leds": 999, "segments": 1}, {"leds": 10, "segments": 2},
-                                       {"leds": 10, "segments": 2}]})
-    assert lay == [StripLayout(20, 4), StripLayout(2, 2), StripLayout(300, 1), StripLayout(10, 2)]
+                                       {"leds": 9999, "segments": 1}, {"leds": 10, "segments": 2}]})
+    assert [(s.leds, s.segments) for s in lay] == [(20, 4), (2, 2), (1000, 1), (10, 2)]
     assert total_zones(lay) == 9
     assert zone_table([StripLayout(14, 3)]) == [(1, 1, 1, 4), (2, 1, 2, 5), (3, 1, 3, 5)]   # como el ESP32
-    many = normalize_layout({"strips": [{"leds": 300, "segments": 8}] * 4 + [{"leds": 9, "segments": 9}]})
-    assert total_zones(many) == 32 and len(many) == 4
+    many = normalize_layout({"strips": [{"leds": 300, "segments": 8}] * 9})
+    assert len(many) == 8 and total_zones(many) == 64                    # hasta 8 tiras
+
+
+def test_layout_pins_are_valid_and_unique():
+    from rkbx_practice.lights.layout import SAFE_PINS, StripLayout, free_pins, needs_restart, normalize_layout
+    lay = normalize_layout({"strips": [{"leds": 10, "segments": 1, "pin": 32},
+                                       {"leds": 10, "segments": 1, "pin": 32},     # repetido
+                                       {"leds": 10, "segments": 1, "pin": 2},      # pin de arranque: no
+                                       {"leds": 10, "segments": 1}]})
+    pins = [s.pin for s in lay]
+    assert pins[0] == 32 and len(set(pins)) == 4 and all(p in SAFE_PINS for p in pins)
+    assert pins[1] == 26 and pins[2] == 27 and pins[3] == 14             # los de fábrica de su posición
+    assert 32 not in free_pins(lay, 1) and 32 in free_pins(lay, 0)
+    assert not needs_restart(lay, [StripLayout(50, 4, s.pin) for s in lay])   # luces/partes: al momento
+    assert needs_restart(lay, lay[:3])                                    # menos tiras: reinicia
+    assert needs_restart(lay, [StripLayout(10, 1, 33)] + lay[1:])         # otro pin: reinicia
 
 
 def test_expand_zones_with_free_layout():
@@ -672,8 +686,9 @@ def test_set_layout_saves_config_and_sends_command(library, tmp_path):
     mgr = LightsManager(cfg, library, BeatGridCache(), sender=Sender(), analyzer=lambda p: None)
     assert mgr.set_layout([StripLayout(20, 4), StripLayout(14, 3)]) is True
     assert sent[-1].fx == "layout"
-    assert json.loads(sent[-1].to_json())["strips"] == [{"leds": 20, "segments": 4}, {"leds": 14, "segments": 3}]
+    assert json.loads(sent[-1].to_json())["strips"] == [{"leds": 20, "segments": 4, "pin": 25},
+                                                        {"leds": 14, "segments": 3, "pin": 26}]
     saved = json.loads(cfg_path.read_text(encoding="utf-8"))
-    assert saved["lights"]["layout"]["strips"][0] == {"leds": 20, "segments": 4}
+    assert saved["lights"]["layout"]["strips"][0] == {"leds": 20, "segments": 4, "pin": 25}
     assert saved["lights"]["events_dir"] == str(tmp_path / "l")          # el resto se conserva
-    assert mgr.layout == [StripLayout(20, 4), StripLayout(14, 3)]
+    assert mgr.layout == [StripLayout(20, 4, 25), StripLayout(14, 3, 26)]

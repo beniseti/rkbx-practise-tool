@@ -307,15 +307,18 @@
       "strips": [
         {
           "leds": 14,
-          "segments": 3
+          "segments": 3,
+          "pin": 25
         },
         {
           "leds": 14,
-          "segments": 3
+          "segments": 3,
+          "pin": 26
         },
         {
           "leds": 14,
-          "segments": 3
+          "segments": 3,
+          "pin": 27
         }
       ]
     },

@@ -36,12 +36,14 @@ ESP32 GPIO 27 ── 330 Ω ── DIN tira 3
   Es un conversor lento (MOSFET + resistencias de 10 kΩ): suele valer para WS2811 con cables
   cortos; si alguna tira parpadea, prueba el GPIO directo a DIN o un 74AHCT125.
 - Condensador de 1000 µF (16 V o más) entre +12 V y GND en la entrada de las tiras.
-- **Montaje sin reprogramar:** cuántas tiras (1-4, canales en GPIO 25, 26, 27 y 14), cuántos
-  píxeles (1-300; en WS2811 de 12 V, 1 píxel = 1 chip = 3 LEDs; 70 cm a 60 LEDs/m ≈ 14) y cuántos
-  segmentos (1-8) tiene cada una se cambia en la app (**Mis tiras…**). El ESP32 lo guarda en su
-  memoria y lo recuerda al reiniciar. Los valores de fábrica (`DEFAULT_STRIPS`, `DEFAULT_PIXELS`,
-  `DEFAULT_SEGMENTS`) están en `include/config.h`, junto con `COLOR_ORDER` (comprueba con el
-  barrido de arranque: tira 1 roja, 2 verde, 3 azul), brillo y pines.
+- **Montaje sin reprogramar:** cuántas tiras (1-8), en qué pin va cada una (se elige una vez:
+  4, 13, 14, 16-19, 21-23, 25-27, 32 o 33), cuántos píxeles (1-1000; en WS2811 de 12 V, 1 píxel =
+  1 chip = 3 LEDs; 70 cm a 60 LEDs/m ≈ 14) y cuántas partes (1-8) tiene cada una se cambia en la
+  app (**Mis tiras…**). El ESP32 lo guarda en su memoria. Píxeles y partes se aplican al momento;
+  pines o número de tiras, con un reinicio automático de un segundo. Los valores de fábrica
+  (`DEFAULT_STRIPS`, `DEFAULT_PIXELS`, `DEFAULT_SEGMENTS`, `DEFAULT_PINS`) están en
+  `include/config.h`, junto con `COLOR_ORDER` (comprueba con el barrido de arranque: tira 1 roja,
+  2 verde, 3 azul…) y el brillo. Con muchas luces por tira bajan los fps (1000 píxeles ≈ 30 fps).
 
 ## Compilar y subir (PlatformIO)
 

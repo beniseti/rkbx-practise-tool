@@ -26,6 +26,10 @@ static_assert(DEFAULT_STRIPS >= 1 && DEFAULT_STRIPS <= rl::MAX_STRIPS, "DEFAULT_
 static CRGB leds[rl::MAX_STRIPS][rl::MAX_PIXELS];
 static rl::RGB* ledPtrs[rl::MAX_STRIPS];
 static CLEDController* controllers[rl::MAX_STRIPS];
+static uint8_t hwPins[rl::MAX_STRIPS];      // pin de cada controlador creado al arrancar
+static int hwStrips = 0;                    // controladores creados (no se pueden quitar en marcha)
+static uint32_t restartAt = 0;              // reinicio pendiente para aplicar pines nuevos
+static const uint8_t kDefaultPins[rl::MAX_STRIPS] = DEFAULT_PINS;
 // Copia del montaje para interpretar «zones» en la tarea de red (se actualiza desde loop()).
 static rl::StripLayout zoneLayout[rl::MAX_STRIPS];
 static volatile int zoneLayoutN = 0;
@@ -98,7 +102,9 @@ static bool parseCommand(const char* data, size_t len, rl::Command& c) {
       if (c.layoutCount >= rl::MAX_STRIPS) break;
       int px = v["leds"] | (v["pixels"] | 0);
       int seg = v["segments"] | 1;
-      c.layout[c.layoutCount++] = rl::StripLayout{(uint16_t)(px < 0 ? 0 : px), (uint8_t)(seg < 0 ? 0 : seg)};
+      int pin = v["pin"] | 0;
+      c.layout[c.layoutCount++] = rl::StripLayout{(uint16_t)(px < 0 ? 0 : px), (uint8_t)(seg < 0 ? 0 : seg),
+                                                  (uint8_t)(pin < 0 ? 0 : pin)};
     }
     return c.layoutCount > 0;
   }
@@ -226,14 +232,73 @@ static void readSerial() {
 // ---------------------------------------------------------------------------
 // Montaje (tiras, píxeles y segmentos): se guarda en la memoria del ESP32 (NVS)
 // ---------------------------------------------------------------------------
+// FastLED necesita el pin al compilar: un caso por cada pin que se puede elegir en la app
+// (misma lista que CHANNEL_PINS / PINES en src/rkbx_practice/lights/layout.py).
+static CLEDController* addStrip(uint8_t pin, CRGB* data) {
+#define RKBX_PIN(P) \
+  case P:           \
+    return &FastLED.addLeds<LED_TYPE, P, COLOR_ORDER>(data, 1);
+  switch (pin) {
+    RKBX_PIN(4) RKBX_PIN(13) RKBX_PIN(14) RKBX_PIN(16) RKBX_PIN(17) RKBX_PIN(18) RKBX_PIN(19)
+    RKBX_PIN(21) RKBX_PIN(22) RKBX_PIN(23) RKBX_PIN(25) RKBX_PIN(26) RKBX_PIN(27) RKBX_PIN(32)
+    RKBX_PIN(33)
+    default: return nullptr;
+  }
+#undef RKBX_PIN
+}
+
+static bool validPin(uint8_t pin) {
+  static const uint8_t ok[] = {4, 13, 14, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33};
+  for (uint8_t p : ok)
+    if (p == pin) return true;
+  return false;
+}
+
+// Pines válidos y sin repetir (si no, el de fábrica de ese canal o el primero libre).
+static void fixPins(rl::StripLayout* l, int n) {
+  static const uint8_t ok[] = {25, 26, 27, 14, 32, 33, 13, 4, 16, 17, 18, 19, 21, 22, 23};
+  for (int s = 0; s < n; ++s) {
+    auto used = [&](uint8_t p) {
+      for (int k = 0; k < s; ++k)
+        if (l[k].pin == p) return true;
+      return false;
+    };
+    if (!validPin(l[s].pin) || used(l[s].pin)) l[s].pin = kDefaultPins[s];
+    if (used(l[s].pin))
+      for (uint8_t p : ok)
+        if (!used(p)) {
+          l[s].pin = p;
+          break;
+        }
+  }
+}
+
+// Crea un controlador por tira con su pin (solo al arrancar: FastLED no permite quitarlos).
+static void createControllers() {
+  const rl::StripLayout* l = engine.layout();
+  hwStrips = 0;
+  for (int s = 0; s < engine.stripCount(); ++s) {
+    controllers[s] = addStrip(l[s].pin, leds[s]);
+    hwPins[s] = l[s].pin;
+    if (controllers[s]) ++hwStrips;
+  }
+}
+
+static bool needsRestart(const rl::StripLayout* l, int n) {
+  if (n != hwStrips) return true;
+  for (int s = 0; s < n; ++s)
+    if (l[s].pin != hwPins[s]) return true;
+  return false;
+}
+
+// Aplica píxeles y partes al momento (los pines no cambian hasta reiniciar).
 static void useLayout() {
   int n = engine.stripCount();
   const rl::StripLayout* l = engine.layout();
   for (int s = 0; s < rl::MAX_STRIPS; ++s) {
     fill_solid(leds[s], rl::MAX_PIXELS, CRGB::Black);
-    // Canal sin tira: se envía 1 píxel negro (el pin queda quieto en la práctica).
-    controllers[s]->setLeds(leds[s], s < n ? l[s].pixels : 1);
-    zoneLayout[s] = s < n ? l[s] : rl::StripLayout{0, 0};
+    if (s < hwStrips && controllers[s]) controllers[s]->setLeds(leds[s], s < n ? l[s].pixels : 1);
+    zoneLayout[s] = s < n ? l[s] : rl::StripLayout{0, 0, 0};
   }
   zoneLayoutN = n;
   FastLED.show();
@@ -243,47 +308,61 @@ static void printLayout(const char* why) {
   int n = engine.stripCount();
   Serial.printf("Montaje (%s): %d tiras, %d zonas:", why, n, engine.zoneCount());
   for (int s = 0; s < n; ++s)
-    Serial.printf(" [canal %d: %d píxeles, %d segmentos]", s + 1, engine.layout()[s].pixels,
-                  engine.layout()[s].segments);
+    Serial.printf(" [tira %d: pin %d, %d píxeles, %d partes]", s + 1, engine.layout()[s].pin,
+                  engine.layout()[s].pixels, engine.layout()[s].segments);
   Serial.println();
 }
 
-static void saveLayout() {
-  uint8_t buf[1 + rl::MAX_STRIPS * 3];
-  int n = engine.stripCount();
+// NVS «layout2»: n, y por tira: píxeles (2 bytes), partes, pin.
+static void saveLayout(const rl::StripLayout* l, int n) {
+  uint8_t buf[1 + rl::MAX_STRIPS * 4];
   buf[0] = (uint8_t)n;
   for (int s = 0; s < n; ++s) {
-    buf[1 + s * 3] = engine.layout()[s].pixels & 0xFF;
-    buf[2 + s * 3] = engine.layout()[s].pixels >> 8;
-    buf[3 + s * 3] = engine.layout()[s].segments;
+    buf[1 + s * 4] = l[s].pixels & 0xFF;
+    buf[2 + s * 4] = l[s].pixels >> 8;
+    buf[3 + s * 4] = l[s].segments;
+    buf[4 + s * 4] = l[s].pin;
   }
-  prefs.putBytes("layout", buf, 1 + n * 3);
+  prefs.putBytes("layout2", buf, 1 + n * 4);
 }
 
 static void loadLayout() {
   rl::StripLayout l[rl::MAX_STRIPS];
   int n = 0;
-  uint8_t buf[1 + rl::MAX_STRIPS * 3];
-  size_t got = prefs.getBytes("layout", buf, sizeof(buf));
-  if (got >= 4 && buf[0] >= 1 && buf[0] <= rl::MAX_STRIPS && got >= (size_t)(1 + buf[0] * 3)) {
+  uint8_t buf[1 + rl::MAX_STRIPS * 4];
+  size_t got = prefs.getBytes("layout2", buf, sizeof(buf));
+  if (got >= 5 && buf[0] >= 1 && buf[0] <= rl::MAX_STRIPS && got >= (size_t)(1 + buf[0] * 4)) {
     n = buf[0];
     for (int s = 0; s < n; ++s)
-      l[s] = rl::StripLayout{(uint16_t)(buf[1 + s * 3] | (buf[2 + s * 3] << 8)), buf[3 + s * 3]};
+      l[s] = rl::StripLayout{(uint16_t)(buf[1 + s * 4] | (buf[2 + s * 4] << 8)), buf[3 + s * 4],
+                             buf[4 + s * 4]};
   } else {
     n = DEFAULT_STRIPS;
-    for (int s = 0; s < n; ++s) l[s] = rl::StripLayout{DEFAULT_PIXELS, DEFAULT_SEGMENTS};
+    for (int s = 0; s < n; ++s) l[s] = rl::StripLayout{DEFAULT_PIXELS, DEFAULT_SEGMENTS, kDefaultPins[s]};
   }
+  fixPins(l, n);
   engine.setLayout(l, n);
 }
 
 static void applyCommand(const rl::Command& c, uint32_t now) {
-  engine.apply(c, now);
   if (c.fx == rl::Fx::Layout) {
+    rl::StripLayout l[rl::MAX_STRIPS];
+    int n = c.layoutCount;
+    for (int s = 0; s < n; ++s) l[s] = c.layout[s];
+    n = rl::sanitizeLayout(l, n);
+    fixPins(l, n);
+    saveLayout(l, n);
+    if (needsRestart(l, n)) {                 // otros pines u otro nº de tiras: reiniciar
+      Serial.println("Montaje con otros pines u otro número de tiras: guardado, reiniciando…");
+      restartAt = now + 300;
+      return;
+    }
+    engine.setLayout(l, n);
     useLayout();
-    saveLayout();
     printLayout("nuevo, guardado");
     return;
   }
+  engine.apply(c, now);
   if (c.fx != rl::Fx::Sync) {
     digitalWrite(STATUS_LED_PIN, HIGH);
     statusLedOffAt = now + 30;
@@ -291,13 +370,14 @@ static void applyCommand(const rl::Command& c, uint32_t now) {
 }
 
 static void bootAnimation() {
-  // Barrido corto para comprobar el cableado: tira 1 roja, 2 verde, 3 azul.
-  const CRGB colors[4] = {CRGB::Red, CRGB::Green, CRGB::Blue, CRGB::White};
+  // Barrido corto para comprobar el cableado: tira 1 roja, 2 verde, 3 azul, 4 blanca…
+  const CRGB colors[rl::MAX_STRIPS] = {CRGB::Red,    CRGB::Green, CRGB::Blue,   CRGB::White,
+                                       CRGB::Yellow, CRGB::Cyan,  CRGB::Purple, CRGB::Orange};
   for (int s = 0; s < engine.stripCount(); ++s) {
     for (int i = 0; i < engine.layout()[s].pixels; ++i) {
       leds[s][i] = colors[s];
       FastLED.show();
-      delay(40);                             // pocos píxeles: barrido visible
+      delay(engine.layout()[s].pixels > 100 ? 2 : 40);   // barrido visible sin tardar mucho
     }
   }
   delay(300);
@@ -308,17 +388,14 @@ void setup() {
   Serial.begin(115200);
   pinMode(STATUS_LED_PIN, OUTPUT);
 
-  controllers[0] = &FastLED.addLeds<LED_TYPE, PIN_STRIP_1, COLOR_ORDER>(leds[0], 1);
-  controllers[1] = &FastLED.addLeds<LED_TYPE, PIN_STRIP_2, COLOR_ORDER>(leds[1], 1);
-  controllers[2] = &FastLED.addLeds<LED_TYPE, PIN_STRIP_3, COLOR_ORDER>(leds[2], 1);
-  controllers[3] = &FastLED.addLeds<LED_TYPE, PIN_STRIP_4, COLOR_ORDER>(leds[3], 1);
+  prefs.begin("rkbx", false);
+  loadLayout();                               // el último montaje enviado desde la app
+  createControllers();                        // un controlador por tira, con su pin
   FastLED.setBrightness(BRIGHTNESS);
   FastLED.setMaxPowerInVoltsAndMilliamps(POWER_VOLTS, POWER_MAX_MILLIAMPS);
   FastLED.setDither(DISABLE_DITHER);          // sin parpadeo de tramado a alta tasa de refresco
   for (int s = 0; s < rl::MAX_STRIPS; ++s) ledPtrs[s] = reinterpret_cast<rl::RGB*>(leds[s]);
 
-  prefs.begin("rkbx", false);
-  loadLayout();                               // el último montaje enviado desde la app
   useLayout();
   commandQueue = xQueueCreate(64, sizeof(rl::Command));
   logQueue = xQueueCreate(32, sizeof(LogLine));
@@ -348,6 +425,8 @@ void loop() {
   while (xQueueReceive(commandQueue, &c, 0) == pdTRUE) applyCommand(c, now);
   readSerial();
   printLog();
+
+  if (restartAt && (int32_t)(now - restartAt) >= 0) ESP.restart();   // pines nuevos
 
   if (statusLedOffAt && (int32_t)(now - statusLedOffAt) >= 0) {
     digitalWrite(STATUS_LED_PIN, LOW);

@@ -112,8 +112,8 @@ const L = { strips: [{ leds: 14, segments: 3 }, { leds: 14, segments: 3 }, { led
             owner: [], total: 0 };
 const nZones = () => L.owner.length;
 function setLayout(strips) {
-  const ok = (Array.isArray(strips) ? strips : []).slice(0, 4).map(s => ({
-    leds: Math.max(1, Math.min(300, Number(s.leds ?? s.pixels) || 14)),
+  const ok = (Array.isArray(strips) ? strips : []).slice(0, 8).map(s => ({
+    leds: Math.max(1, Math.min(1000, Number(s.leds ?? s.pixels) || 14)),
     segments: Math.max(1, Math.min(8, Number(s.segments) || 1)) }));
   if (ok.length) L.strips = ok;
   L.owner = []; L.total = 0;

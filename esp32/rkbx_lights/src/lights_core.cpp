@@ -137,20 +137,20 @@ int sanitizeLayout(StripLayout* strips, int n) {
   return n;
 }
 
-static uint32_t bit(int z) { return (uint32_t)1u << (z - 1); }
+static uint64_t bit(int z) { return (uint64_t)1 << (z - 1); }
 
-uint32_t parseZones(const char* spec, const StripLayout* strips, int n) {
+uint64_t parseZones(const char* spec, const StripLayout* strips, int n) {
   int total = 0;
   for (int i = 0; i < n; ++i) total += strips[i].segments;
-  uint32_t all = total >= 32 ? 0xFFFFFFFFu : ((1u << total) - 1);
+  uint64_t all = total >= 64 ? ~(uint64_t)0 : (((uint64_t)1 << total) - 1);
   if (!spec || !*spec || ieq(spec, "all") || ieq(spec, "todas")) return all;
   if (ieq(spec, "odd") || ieq(spec, "impares")) {
-    uint32_t m = 0;
+    uint64_t m = 0;
     for (int z = 1; z <= total; z += 2) m |= bit(z);
     return m;
   }
   if (ieq(spec, "even") || ieq(spec, "pares")) {
-    uint32_t m = 0;
+    uint64_t m = 0;
     for (int z = 2; z <= total; z += 2) m |= bit(z);
     return m;
   }
@@ -165,14 +165,14 @@ uint32_t parseZones(const char* spec, const StripLayout* strips, int n) {
     bool section = ieq(kind, "section") || ieq(kind, "seccion") || ieq(kind, "sección") ||
                    ieq(kind, "segment") || ieq(kind, "segmento");
     if (!strip && !section) return 0;
-    uint32_t m = 0;
+    uint64_t m = 0;
     int z = 1;
     for (int s = 0; s < n; ++s)
       for (int c = 1; c <= strips[s].segments; ++c, ++z)
         if ((strip && s + 1 == k) || (section && c == k)) m |= bit(z);
     return m;
   }
-  uint32_t m = 0;   // lista "1,5,9"
+  uint64_t m = 0;   // lista "1,5,9"
   const char* p = spec;
   while (*p) {
     while (*p == ' ' || *p == ',') ++p;
@@ -186,8 +186,8 @@ uint32_t parseZones(const char* spec, const StripLayout* strips, int n) {
   return m;
 }
 
-uint32_t zonesFromList(const int* list, int n, int total) {
-  uint32_t m = 0;
+uint64_t zonesFromList(const int* list, int n, int total) {
+  uint64_t m = 0;
   for (int i = 0; i < n; ++i)
     if (list[i] >= 1 && list[i] <= total && list[i] <= MAX_ZONES) m |= bit(list[i]);
   return m;
@@ -195,17 +195,17 @@ uint32_t zonesFromList(const int* list, int n, int total) {
 
 static int uniform(StripLayout* out, int strips, int sections, int pixels) {
   if (strips > MAX_STRIPS) strips = MAX_STRIPS;
-  for (int i = 0; i < strips; ++i) out[i] = StripLayout{(uint16_t)pixels, (uint8_t)sections};
+  for (int i = 0; i < strips; ++i) out[i] = StripLayout{(uint16_t)pixels, (uint8_t)sections, 0};
   return strips;
 }
 
-uint32_t parseZones(const char* spec, int strips, int sections) {
+uint64_t parseZones(const char* spec, int strips, int sections) {
   StripLayout l[MAX_STRIPS];
   int n = uniform(l, strips, sections, MAX_PIXELS);
   return parseZones(spec, l, n);
 }
 
-uint32_t zonesFromList(const int* list, int n, int strips, int sections) {
+uint64_t zonesFromList(const int* list, int n, int strips, int sections) {
   return zonesFromList(list, n, strips * sections);
 }
 
@@ -225,7 +225,7 @@ void Engine::setLayout(const StripLayout* strips, int n) {
   zones_n_ = 0;
   totalPixels_ = 0;
   for (int i = 0; i < MAX_STRIPS; ++i) {
-    layout_[i] = i < n ? l[i] : StripLayout{0, 0};
+    layout_[i] = i < n ? l[i] : StripLayout{0, 0, 0};
     zoneStart_[i] = zones_n_;
     zones_n_ += layout_[i].segments;
     totalPixels_ += layout_[i].pixels;
@@ -271,10 +271,10 @@ void Engine::apply(const Command& c, uint32_t now) {
   int total = zoneCount();
   int count = 0;
   for (int zi = 0; zi < total; ++zi)
-    if (c.zoneMask & ((uint32_t)1u << zi)) ++count;
+    if (c.zoneMask & ((uint64_t)1 << zi)) ++count;
   int pos = 0;
   for (int zi = 0; zi < total; ++zi) {
-    if (!(c.zoneMask & ((uint32_t)1u << zi))) continue;
+    if (!(c.zoneMask & ((uint64_t)1 << zi))) continue;
     Zone& z = zones_[zi];
     auto setBase = [&](Base b) {
       z.prev = z.base;
