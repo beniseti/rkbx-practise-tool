@@ -109,6 +109,7 @@ class UiConfig:
     theme: str = "rekordbox"   # "rekordbox" (oscuro) o "system"
     language: str = "es"       # "es" o "en" (menú Idioma)
     module: str = "all"        # módulo al abrir: "all" (pestañas), "practice" o "lights" (solo luces)
+    light_view: bool = False   # panel lateral con las luces (simulador dentro de la ventana)
 
 
 @dataclass

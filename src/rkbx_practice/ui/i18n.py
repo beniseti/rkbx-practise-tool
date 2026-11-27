@@ -136,6 +136,13 @@ EN: dict[str, str] = {
     "Ajustar el retraso para que las luces vayan con el bombo.":
         "Adjust the delay so the lights hit with the kick.",
     "Deck {deck}": "Deck {deck}",
+    "Ver luces aquí": "Show lights here",
+    "Las luces en un lateral de esta ventana, sin abrir el navegador.":
+        "The lights in a side panel of this window, without opening the browser.",
+    "&Ver luces en la ventana (lateral)": "&Show lights in the window (side panel)",
+    "Luces en directo": "Live lights",
+    "Esta instalación de PySide6 no incluye el navegador integrado (QtWebEngine). Se abre el simulador en el navegador.":
+        "This PySide6 installation does not include the built-in browser (QtWebEngine). The simulator opens in the browser.",
     "Simulador en {url}{extra} · luces activadas": "Simulator at {url}{extra} · lights enabled",
     " (ya estaba abierto: se usa ese)": " (already open: using it)",
     "No se pudo abrir el simulador: {error}": "Could not open the simulator: {error}",

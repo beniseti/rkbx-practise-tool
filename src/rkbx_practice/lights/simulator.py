@@ -114,13 +114,14 @@ class LightSimulator:
                 self.wfile.write(body)
 
             def do_GET(self):  # noqa: N802
-                if self.path in ("/", "/index.html"):
+                path = self.path.split("?", 1)[0]       # ?embed=1 (vista lateral de la app)
+                if path in ("/", "/index.html"):
                     self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
-                elif self.path == "/config":
+                elif path == "/config":
                     body = json.dumps({"leds": sim.leds, "effects": sim.effects, "layout": _norm(sim.layout),
                                        "udp": f"{sim.udp_addr[0]}:{sim.udp_addr[1]}"}).encode()
                     self._send(200, body, "application/json")
-                elif self.path == "/events":
+                elif path == "/events":
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
                     self.send_header("Cache-Control", "no-store")

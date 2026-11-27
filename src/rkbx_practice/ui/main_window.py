@@ -19,7 +19,7 @@ import time
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor, QFont, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog,
-                               QDoubleSpinBox, QFrame, QGridLayout, QHBoxLayout, QHeaderView,
+                               QDockWidget, QDoubleSpinBox, QFrame, QGridLayout, QHBoxLayout, QHeaderView,
                                QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
                                QPlainTextEdit, QProgressBar, QPushButton, QSplitter, QTabWidget,
                                QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
@@ -576,6 +576,8 @@ class LightsPage(QWidget):
             ("🖥  " + tr("Simulador"), tr("Ver las luces en el navegador, sin el ESP32."), win.open_simulator),
             ("⏱  " + tr("Latencia"), tr("Ajustar el retraso para que las luces vayan con el bombo."),
              win.show_latency),
+            ("👁  " + tr("Ver luces aquí"), tr("Las luces en un lateral de esta ventana, sin abrir el navegador."),
+             lambda: win.set_light_view(True)),
         ]
         for i, (title, desc, fn) in enumerate(items):
             b = QPushButton(f"{title}\n{desc}")
@@ -666,6 +668,9 @@ class MainWindow(QMainWindow):
         self._timer.start(100)
         if cfg.ui.start_compact:
             self.toggle_compact()
+        self._light_dock: QDockWidget | None = None
+        if cfg.ui.light_view and self.lights_page is not None:
+            QTimer.singleShot(300, lambda: self.set_light_view(True))
 
     # --- menú ------------------------------------------------------------------
     def _action(self, menu, text: str, slot=None, shortcut: str | None = None, checkable: bool = False,
@@ -705,8 +710,12 @@ class MainWindow(QMainWindow):
             self._action(m, "&Mis tiras…", self.show_layout)
             self._action(m, "&Simulador (navegador)", self.open_simulator)
             self._action(m, "&Latencia…", self.show_latency)
+            m.addSeparator()
+            self.act_view = self._action(m, "&Ver luces en la ventana (lateral)", self.set_light_view,
+                                         "Ctrl+Shift+L", checkable=True)
         else:
             self.act_lights = None
+            self.act_view = None
 
         m = mb.addMenu(tr("&Ver"))
         if self.tabs.count() > 1:
@@ -789,6 +798,54 @@ class MainWindow(QMainWindow):
         self.set_lights(True)                       # abrir el simulador sin luces no sirve de nada
         extra = tr(" (ya estaba abierto: se usa ese)") if self.ctl.lights.external_simulator else ""
         self.statusBar().showMessage(tr("Simulador en {url}{extra} · luces activadas", url=url, extra=extra), 8000)
+
+    def set_light_view(self, on: bool) -> None:
+        """Panel lateral con las luces (el simulador dentro de la ventana, solo los efectos)."""
+        if on and self._light_dock is None:
+            try:
+                from PySide6.QtWebEngineWidgets import QWebEngineView
+            except ImportError:
+                QMessageBox.information(self, tr("Luces"), tr(
+                    "Esta instalación de PySide6 no incluye el navegador integrado (QtWebEngine). "
+                    "Se abre el simulador en el navegador."))
+                self._sync_view(False)
+                self.open_simulator()
+                return
+            try:
+                url = self.ctl.lights.start_simulator()
+            except OSError as exc:
+                QMessageBox.warning(self, tr("Simulador"), tr("No se pudo abrir el simulador: {error}", error=exc))
+                self._sync_view(False)
+                return
+            from PySide6.QtCore import QUrl
+            view = QWebEngineView()
+            view.setUrl(QUrl(url + "?embed=1"))
+            dock = QDockWidget(tr("Luces en directo"), self)
+            dock.setObjectName("lightView")
+            dock.setWidget(view)
+            dock.setMinimumWidth(220)
+            # Al cerrar el panel con su ✕ se recuerda; al minimizar o cerrar la app, no.
+            dock.visibilityChanged.connect(lambda visible: self._sync_view(
+                visible, save=self.isVisible() and not self.isMinimized() and not getattr(self, "_closing", False)))
+            self.addDockWidget(Qt.RightDockWidgetArea, dock)
+            self._light_dock = dock
+            self.resize(self.width() + 320, self.height())
+        if self._light_dock is not None:
+            self._light_dock.setVisible(on)
+        if on:
+            self.set_lights(True)
+        self._sync_view(on, save=True)
+
+    def _sync_view(self, on: bool, save: bool = False) -> None:
+        if self.act_view is not None:
+            self.act_view.blockSignals(True)
+            self.act_view.setChecked(on)
+            self.act_view.blockSignals(False)
+        if save and self.cfg.ui.light_view != on:
+            self.cfg.ui.light_view = on
+            if self.cfg.source_path is not None:
+                from ..config import save_value
+                save_value(self.cfg.source_path, ["ui", "light_view"], on)
 
     def show_lights_editor(self) -> None:
         from .lights_editor import LightsEditor
@@ -898,6 +955,7 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(tr("Luces: {label} → {fx}", label=ev.label, fx=ev.fx), 3000)
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt)
+        self._closing = True
         if self.ctl.recorder.recording:
             path = self.ctl.stop_recording()
             log.info("Grabación guardada al cerrar: %s", path)
@@ -910,6 +968,13 @@ class MainWindow(QMainWindow):
 def run_ui(cfg: AppConfig, library: InMemoryLibrary, controller: PracticeController | None = None,
            module: str | None = None) -> int:
     set_language(cfg.ui.language)
+    if QApplication.instance() is None:
+        # El navegador integrado (panel lateral de luces) debe cargarse antes de crear la aplicación.
+        QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
+        try:
+            import PySide6.QtWebEngineWidgets  # noqa: F401
+        except ImportError:
+            pass
     app = QApplication.instance() or QApplication([])
     if cfg.ui.theme == "rekordbox":
         app.setStyle("Fusion")

@@ -44,6 +44,13 @@
   button { cursor: pointer; }
   button:hover { border-color: var(--accent); }
   .opts { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  /* ?embed=1: solo las luces (panel lateral de la app) */
+  body.embed header, body.embed .panel, body.embed aside { display: none; }
+  body.embed main { padding: 0; display: block; }
+  body.embed .stage { border: 0; border-radius: 0; height: 100vh; display: flex; flex-direction: column; }
+  body.embed canvas { height: auto; flex: 1; min-height: 0; }
+  body.embed .now { gap: 10px; padding: 4px 8px; font-size: 12px; }
+  body.embed #count, body.embed #sync { display: none; }
 </style>
 </head>
 <body>
@@ -79,6 +86,7 @@
   </aside>
 </main>
 <script>
+if (new URLSearchParams(location.search).has("embed")) document.body.classList.add("embed");
 "use strict";
 // --- Colores (nombres en español e inglés, o #rrggbb / [r,g,b]) -----------------
 const NAMED = {
@@ -322,7 +330,7 @@ const room = document.getElementById("room");
 function draw(now) {
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth, h = canvas.clientHeight;
-  if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
   const nS = L.strips.length, gap = 14, padX = 34, rowH = h / nS;

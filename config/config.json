@@ -69,7 +69,8 @@
     "start_compact": false,
     "theme": "rekordbox",
     "language": "es",
-    "module": "all"
+    "module": "all",
+    "light_view": false
   },
   "lights": {
     "enabled": false,
