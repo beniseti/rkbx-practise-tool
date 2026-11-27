@@ -100,8 +100,10 @@ class SuggestionPanel(QFrame):
     def set_color(self, color: str) -> None:
         """`color` es una clave de theme.ROW_STYLES o un color de fondo."""
         _bg, fg = theme.ROW_STYLES.get(color, (color, "#ffffff"))
-        self.setStyleSheet(f"#suggestionPanel {{ background: {theme.PANEL}; border: 1px solid {theme.BORDER};"
-                           f" border-left: 6px solid {fg}; border-radius: 3px; }}"
+        border = "none" if theme.current == "material" else f"1px solid {theme.BORDER}"
+        radius = 16 if theme.current == "material" else 3
+        self.setStyleSheet(f"#suggestionPanel {{ background: {theme.PANEL}; border: {border};"
+                           f" border-left: 6px solid {fg}; border-radius: {radius}px; }}"
                            f" QLabel {{ color: {theme.TEXT}; }}"
                            f" QLabel#sugHeader {{ color: {fg}; }}")
 
@@ -251,6 +253,7 @@ class PracticePage(QWidget):
                 prefix = "    " * depth + ("📁 " if node.kind == NodeKind.FOLDER else "")
                 self.source_combo.addItem(prefix + node.name, node.id)
         self.generate_button = QPushButton(tr("Generar sesión"))
+        self.generate_button.setProperty("role", "primary")
         self.generate_button.clicked.connect(self.generate)
         self.tolerance = QDoubleSpinBox()
         self.tolerance.setRange(0.5, 20.0)
@@ -725,6 +728,16 @@ class MainWindow(QMainWindow):
         self.act_compact = self._action(m, "&Compactar", self.toggle_compact, "Ctrl+M", checkable=True)
         top = self._action(m, "Siempre &visible", self.set_always_on_top, checkable=True)
         top.setChecked(self.cfg.ui.always_on_top)
+        m.addSeparator()
+        tm = m.addMenu(tr("&Tema"))
+        tgroup = QActionGroup(self)
+        for code, label in (("material", "Material Design"), ("rekordbox", "Rekordbox"),
+                            ("system", "Sistema (Windows)")):
+            act = QAction(tr(label), self, checkable=True)
+            act.setChecked(code == theme.current)
+            act.triggered.connect(lambda _c=False, code=code: self.change_theme(code))
+            tgroup.addAction(act)
+            tm.addAction(act)
 
         m = mb.addMenu(tr("&Idioma"))
         group = QActionGroup(self)
@@ -905,6 +918,19 @@ class MainWindow(QMainWindow):
             QProcess.startDetached(sys.executable, sys.argv)
             self.close()
 
+    def change_theme(self, name: str) -> None:
+        """Cambia el tema al momento y lo guarda (ui.theme)."""
+        app = QApplication.instance()
+        app.setStyleSheet(theme.apply(name))
+        if self.practice is not None:              # colores que se pintan desde el código
+            self.practice.suggestion.setStyleSheet("")
+            self.practice.refresh_session()
+            self.practice._refresh_suggestion()
+        self.cfg.ui.theme = name
+        if self.cfg.source_path is not None:
+            from ..config import save_value
+            save_value(self.cfg.source_path, ["ui", "theme"], name)
+
     def about(self) -> None:
         QMessageBox.about(self, tr("Acerca de"), "rkbx-practise-tool\n\n" +
                           tr("Asistente de práctica para Rekordbox: sesiones, grabación de mezclas y luces."))
@@ -976,9 +1002,8 @@ def run_ui(cfg: AppConfig, library: InMemoryLibrary, controller: PracticeControl
         except ImportError:
             pass
     app = QApplication.instance() or QApplication([])
-    if cfg.ui.theme == "rekordbox":
-        app.setStyle("Fusion")
-        app.setStyleSheet(theme.QSS)
+    app.setStyle("Fusion")
+    app.setStyleSheet(theme.apply(cfg.ui.theme))
     ctl = controller or PracticeController(cfg, library)
     win = MainWindow(cfg, library, ctl, module=module)
     bridge = LiveBridge()

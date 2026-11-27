@@ -37,7 +37,7 @@ class Stepper(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
         t = QLabel(title)
-        t.setStyleSheet("color:#9aa0a6;")
+        t.setProperty("role", "dim")
         self.minus, self.plus = QToolButton(), QToolButton()
         for b, txt in ((self.minus, "−"), (self.plus, "+")):
             b.setText(txt)
@@ -166,7 +166,6 @@ class StripCard(QFrame):
         super().__init__(parent)
         self._pin = strip.pin
         self.setObjectName("card")
-        self.setStyleSheet("#card { background:#1b1e24; border:1px solid #2f343d; border-radius:10px; }")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(12, 8, 12, 10)
         top = QHBoxLayout()
@@ -195,7 +194,7 @@ class StripCard(QFrame):
         bottom = QHBoxLayout()
         bottom.addStretch(1)
         pin_label = QLabel(tr("Cable de datos en el pin"))
-        pin_label.setStyleSheet("color:#9aa0a6;")
+        pin_label.setProperty("role", "dim")
         self.pin = QComboBox()
         for p in SAFE_PINS:
             self.pin.addItem(f"{p}", p)
@@ -238,7 +237,7 @@ class LayoutDialog(QDialog):
                         "quieres dividir. Cada parte de color puede tener su propio efecto. "
                         "Toca una parte para verla encenderse."))
         sub.setWordWrap(True)
-        sub.setStyleSheet("color:#9aa0a6;")
+        sub.setProperty("role", "dim")
         root.addWidget(sub)
 
         self.cards_box = QVBoxLayout()
@@ -249,10 +248,11 @@ class LayoutDialog(QDialog):
         inner.addLayout(self.cards_box)
         self.add_btn = QPushButton(tr("＋  Añadir tira"))
         self.add_btn.setMinimumHeight(46)
-        self.add_btn.setStyleSheet("QPushButton { border:2px dashed #495057; border-radius:10px; "
-                                   "font-size:15px; color:#ced4da; background:transparent; } "
-                                   "QPushButton:hover { border-color:#ff8a1f; color:#ff8a1f; } "
-                                   "QPushButton:disabled { color:#495057; }")
+        from . import theme
+        self.add_btn.setStyleSheet(f"QPushButton {{ border:2px dashed {theme.BORDER}; border-radius:16px; "
+                                   f"font-size:15px; color:{theme.TEXT_DIM}; background:transparent; }} "
+                                   f"QPushButton:hover {{ border-color:{theme.ACCENT}; color:{theme.ACCENT}; }} "
+                                   f"QPushButton:disabled {{ color:{theme.BORDER}; }}")
         self.add_btn.clicked.connect(self._add)
         inner.addWidget(self.add_btn)
         inner.addStretch(1)
@@ -263,7 +263,7 @@ class LayoutDialog(QDialog):
         root.addWidget(scroll, 1)
 
         self.summary = QLabel()
-        self.summary.setStyleSheet("color:#9aa0a6;")
+        self.summary.setProperty("role", "dim")
         root.addWidget(self.summary)
 
         btns = QHBoxLayout()
@@ -272,8 +272,7 @@ class LayoutDialog(QDialog):
         test.clicked.connect(self._identify)
         save = QPushButton(tr("Guardar"))
         save.setDefault(True)
-        save.setStyleSheet("QPushButton { background:#ff8a1f; color:#111; font-weight:bold; "
-                           "padding:6px 22px; border-radius:6px; }")
+        save.setProperty("role", "primary")
         save.clicked.connect(self._save)
         cancel = QPushButton(tr("Cancelar"))
         cancel.clicked.connect(self.reject)
