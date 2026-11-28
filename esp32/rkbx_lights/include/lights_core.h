@@ -21,7 +21,8 @@ constexpr uint64_t ALL_ZONES = ~(uint64_t)0;
 struct StripLayout {
   uint16_t pixels;    // píxeles direccionables (WS2811 de 12 V: 1 píxel = 3 LEDs)
   uint8_t segments;   // zonas en que se divide la tira (a partes iguales)
-  uint8_t pin = 0;    // GPIO de datos (lo usa main.cpp; 0 = el de fábrica de ese canal)
+  uint8_t pin;        // GPIO de datos (lo usa main.cpp; 0 = el de fábrica de ese canal)
+  // (sin valores por defecto: el compilador del ESP32 usa C++11 y la struct debe ser un agregado)
 };
 
 enum class Fx : uint8_t {
@@ -113,7 +114,7 @@ class Engine {
   void applySync(const Command& c, uint32_t now);
 
   int segmentStart(int strip, int seg) const;
-  StripLayout layout_[MAX_STRIPS] = {{60, 3}, {60, 3}, {60, 3}};
+  StripLayout layout_[MAX_STRIPS] = {{60, 3, 0}, {60, 3, 0}, {60, 3, 0}};
   int strips_ = 3, zones_n_ = 9, totalPixels_ = 180;
   int zoneStart_[MAX_STRIPS + 1] = {0, 3, 6, 9, 9, 9, 9, 9, 9};
   Zone zones_[MAX_ZONES];

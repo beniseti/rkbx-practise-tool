@@ -202,7 +202,7 @@ int main() {
   CHECK(q0[28].r > 200);
 
   // --- montaje libre: cada tira con sus píxeles y segmentos (se cambia en marcha con "layout")
-  StripLayout lay[4] = {{10, 2}, {20, 4}, {6, 3}, {8, 1}};
+  StripLayout lay[4] = {{10, 2, 0}, {20, 4, 0}, {6, 3, 0}, {8, 1, 0}};
   CHECK(parseZones("strip:2", lay, 4) == 0b0000111100u);          // zonas 3-6
   CHECK(parseZones("section:3", lay, 4) == ((1ull << 4) | (1ull << 8)));   // zona 5 (tira 2) y 9 (tira 3)
   CHECK(parseZones("all", lay, 4) == 0x3FFu);
@@ -224,7 +224,7 @@ int main() {
   lv.render(1000, wout);
   CHECK(m1[0].r == 255 && m1[19].r == 255 && m0[0].r == 0 && m3[7].r == 0);
   // límites: demasiadas zonas → se recorta a 32
-  StripLayout big[8] = {{300, 8}, {300, 8}, {300, 8}, {300, 8}, {300, 8}, {300, 8}, {300, 8}, {300, 9}};
+  StripLayout big[8] = {{300, 8, 0}, {300, 8, 0}, {300, 8, 0}, {300, 8, 0}, {300, 8, 0}, {300, 8, 0}, {300, 8, 0}, {300, 9, 0}};
   CHECK(sanitizeLayout(big, 8) == 8 && big[7].segments == 8);
   Command idc;
   idc.fx = parseFx("identificar");
